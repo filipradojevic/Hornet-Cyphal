@@ -22,10 +22,6 @@ virtual environment.
 git clone --recursive <https>
 ```
 
-### Get into cloned dir
-```bash
-cd Hornet-Cyphal
-```
 
 ### Create dirs for module that we wanna clone 
 ```bash
@@ -37,24 +33,14 @@ git worktree add ..\Ins Ins
 git worktree add ..\PwrMan PwrMan
 ```
 
-### Git clone exact branch in exact dir
-```bash
-git clone --recursive --branch GwGnd   https://github.com/filipradojevic/Hornet-Cyphal.git GwGnd
-git clone --recursive --branch GwSky   https://github.com/filipradojevic/Hornet-Cyphal.git GwSky
-git clone --recursive --branch ActMaster https://github.com/filipradojevic/Hornet-Cyphal.git ActMaster
-git clone --recursive --branch BlackBox  https://github.com/filipradojevic/Hornet-Cyphal.git BlackBox
-git clone --recursive --branch Ins       https://github.com/filipradojevic/Hornet-Cyphal.git Ins
-git clone --recursive --branch PwrMan    https://github.com/filipradojevic/Hornet-Cyphal.git PwrMan
-```
-
 ### Get into cloned dir
 ```bash
-cd GwGnd
-cd GwSky
-cd ActMaster
-cd BlackBox
-cd Ins
-cd PwrMan
+code .\GwGnd
+code .\GwSky
+code .\ActMaster
+code .\BlackBox
+code .\Ins
+code .\PwrMan
 ```
 
 ### View all branches
