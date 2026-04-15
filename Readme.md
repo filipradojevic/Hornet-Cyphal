@@ -4,7 +4,7 @@ This project is intended to be used as a starting point. Make sure to clone
 the repository using the ***--recursive*** flag:
 
 ```bash
-git clone --recursive <https>
+git clone --recursive https://github.com/filipradojevic/Hornet-Cyphal.git
 ```
 
 Project relies on multiple generators during the build stage, such as mavgen and
@@ -19,7 +19,12 @@ virtual environment.
 ### Clone the project
 
 ```bash
-git clone --recursive <https>
+git clone --recursive https://github.com/filipradojevic/Hornet-Cyphal.git
+```
+
+### Go to the dir 
+```bash
+cd Hornet-Cyphal
 ```
 
 
@@ -31,6 +36,12 @@ git worktree add ..\ActMaster ActMaster
 git worktree add ..\BlackBox BlackBox
 git worktree add ..\Ins Ins
 git worktree add ..\PwrMan PwrMan
+```
+
+
+### Go back to the all dirs 
+```bash
+cd ..
 ```
 
 ### Get into cloned dir
