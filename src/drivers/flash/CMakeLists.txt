@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "flash_common.c"
+		"flash.c"
+		"gd5f2gq5ue/gd5f2gq5ue.c"
+    INCLUDE_DIRS
+        "."
+		"gd5f2gq5ue"
+    REQUIRES
+        driver
+        mav
+)

@@ -1,0 +1,43 @@
+idf_component_register(
+    SRCS   
+        "main.c"
+        "task_log.c"
+        "task_work.c"
+        "protocol_utility.c"
+    
+    PRIV_REQUIRES  
+        driver
+        libcanard
+        cyphal
+        bl
+        sd
+        flash
+        tl
+        udp 
+        udp_tl
+        lfs
+        ulog
+        mav
+        esp_timer
+        ftp
+        lfs_utilities
+        fatfs
+        w5500
+        psram_ring
+        esp_psram
+        heap
+        freertos
+        ds1302
+
+    INCLUDE_DIRS 
+        "."
+        "${CMAKE_BINARY_DIR}/cyphal/uavcan"
+        "${CMAKE_BINARY_DIR}/cyphal/reg"
+        "${CMAKE_BINARY_DIR}/cyphal/mavlink"
+        "${CMAKE_BINARY_DIR}/cyphal/cyphal/messages/mavlink"
+        "${CMAKE_BINARY_DIR}/cyphal/utility"
+
+        "${CMAKE_BINARY_DIR}/ulog"
+        "${CMAKE_BINARY_DIR}/ulog/cyphal"
+        "${CMAKE_BINARY_DIR}/ulog/mavlink"
+)

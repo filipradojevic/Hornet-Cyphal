@@ -1,0 +1,1 @@
+This is link to the device RTIC (Real Time Clock) DS1302 https://www.alldatasheet.com/datasheet-pdf/download/58478/DALLAS/DS1302.html
