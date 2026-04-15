@@ -1,0 +1,8 @@
+build
+.vscode
+CMakeUserPresets.json
+
+# python virtual environment
+.venv
+venv
+python_venv

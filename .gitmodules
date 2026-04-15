@@ -1,0 +1,15 @@
+[submodule "messages"]
+	path = messages
+	url = https://github.com/BetaTehPro/messages.git
+[submodule "src/middleware/ulog/ulog-gen"]
+	path = src/middleware/ulog/ulog-gen
+	url = https://github.com/BetaTehPro/ulog-gen.git
+[submodule "src/middleware/mav/mavlink"]
+	path = src/middleware/mav/mavlink
+	url = https://github.com/mavlink/mavlink.git
+[submodule "src/middleware/lfs/littlefs"]
+	path = src/middleware/lfs/littlefs
+	url = https://github.com/littlefs-project/littlefs.git
+[submodule "src/libs/Fusion/Fusion"]
+	path = src/libs/Fusion/Fusion
+	url = https://github.com/xioTechnologies/Fusion.git
