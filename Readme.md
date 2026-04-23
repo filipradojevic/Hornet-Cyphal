@@ -1,10 +1,11 @@
 # APP SHELL
 
 This project is intended to be used as a starting point. Make sure to clone
-the repository using the ***--recursive*** flag:
+the repository using the ***--recurse-submodules*** flag to also pull the MAVLink
+XML definitions from [Hornet-MavlinkDialects](https://github.com/filipradojevic/MavlinkDialects):
 
 ```bash
-git clone --recursive https://github.com/filipradojevic/Hornet-Cyphal.git
+git clone --recurse-submodules https://github.com/filipradojevic/Hornet-Cyphal.git
 ```
 
 Project relies on multiple generators during the build stage, such as mavgen and
@@ -16,10 +17,10 @@ virtual environment.
 
 ## Git Workflow
 
-### Clone the project
+### Clone the project (all branches via worktree)
 
 ```bash
-git clone --recursive https://github.com/filipradojevic/Hornet-Cyphal.git
+git clone --recurse-submodules https://github.com/filipradojevic/Hornet-Cyphal.git
 ```
 
 ### Go to the dir 
@@ -27,8 +28,7 @@ git clone --recursive https://github.com/filipradojevic/Hornet-Cyphal.git
 cd Hornet-Cyphal
 ```
 
-
-### Create dirs for module that we wanna clone 
+### Create dirs for each branch using worktree
 ```bash
 git worktree add ..\GwGnd GwGnd
 git worktree add ..\GwSky GwSky
@@ -38,13 +38,19 @@ git worktree add ..\Ins Ins
 git worktree add ..\PwrMan PwrMan
 ```
 
+> **Note:** Each worktree folder is an independent working directory for that branch.
+> Submodules are **not** automatically initialized in new worktrees — run the following
+> inside each worktree folder after creating it:
+> ```bash
+> git submodule update --init --recursive
+> ```
 
-### Go back to the all dirs 
+### Go back to the parent dir 
 ```bash
 cd ..
 ```
 
-### Get into cloned dir
+### Open each branch in VS Code
 ```bash
 code .\GwGnd
 code .\GwSky
@@ -53,6 +59,20 @@ code .\BlackBox
 code .\Ins
 code .\PwrMan
 ```
+
+---
+
+### Clone a single branch (lightweight)
+
+If you only need one specific branch, clone it directly with submodules:
+
+```bash
+git clone --recurse-submodules -b ActMaster https://github.com/filipradojevic/Hornet-Cyphal.git
+```
+
+Replace `ActMaster` with the desired branch name (`GwGnd`, `GwSky`, `BlackBox`, `Ins`, `PwrMan`).
+
+---
 
 ### View all branches
 
@@ -77,6 +97,11 @@ git checkout Ins
 git checkout PwrMan
 ```
 
+> **Note:** After switching branches, update submodules if the branch has them:
+> ```bash
+> git submodule update --init --recursive
+> ```
+
 ### Create a local branch tracking a remote branch
 
 ```bash
@@ -87,12 +112,43 @@ git checkout -b ActMaster origin/ActMaster
 
 ```bash
 git pull
+git submodule update --init --recursive
 ```
+
+Or configure Git to always update submodules automatically on pull:
+
+```bash
+git config --global submodule.recurse true
+```
+
+After setting this, a regular `git pull` will update submodules as well.
 
 ### Check the current branch
 
 ```bash
 git branch
+```
+
+---
+
+## MAVLink Definitions (Submodule)
+
+MAVLink XML dialect files are managed as a Git submodule located at `messages/mavlink/`.
+They are pulled from [filipradojevic/MavlinkDialects](https://github.com/filipradojevic/MavlinkDialects).
+
+If the `messages/mavlink/` folder is empty after cloning, run:
+
+```bash
+git submodule update --init --recursive
+```
+
+To update the MAVLink definitions to the latest version from the source repo:
+
+```bash
+git submodule update --remote messages/mavlink
+git add messages/mavlink
+git commit -m "Update mavlink submodule to latest"
+git push
 ```
 
 ---
@@ -192,7 +248,7 @@ before each commit, ensuring consistent formatting.
 In order to compile the project, the required tools must be configured.
 Instructions can be found on QNAP or YouTube:
 
-- [Windows Instructions](https://youtu.be/mzDSuTes94s?si=mTRIQjb0yGjn8cFB)
+- [Windows Instructions](https://youtu.be/mzDSuTes94s?si=mTRIQjb0yGTXko)
 - [Linux Instructions](https://youtu.be/_yG40rGTXko?si=Ls3UtnsF5oRLxzyv)
 
 ### Cortex-Debug
