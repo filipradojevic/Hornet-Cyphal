@@ -30,24 +30,25 @@ cd Hornet-Cyphal
 
 ### Create dirs for each branch using worktree
 ```bash
-git worktree add ..\GwGnd GwGnd
-git worktree add ..\GwSky GwSky
-git worktree add ..\ActMaster ActMaster
-git worktree add ..\BlackBox BlackBox
-git worktree add ..\Ins Ins
-git worktree add ..\PwrMan PwrMan
+git worktree add ../GwGnd GwGnd
+git worktree add ../GwSky GwSky
+git worktree add ../ActMaster ActMaster
+git worktree add ../BlackBox BlackBox
+git worktree add ../Ins Ins
+git worktree add ../PwrMan PwrMan
 ```
 
-> **Note:** Each worktree folder is an independent working directory for that branch.
-> Submodules are **not** automatically initialized in new worktrees — run the following
-> inside each worktree folder after creating it:
-> ```bash
-> git submodule update --init --recursive
-> ```
+### Update all in once with submodule mavlink dialects:
+```
+for d in ../GwGnd ../GwSky ../ActMaster ../BlackBox ../Ins ../PwrMan; do
+  (cd "$d" && git submodule update --remote --init --recursive)
+done
+```
 
-### Go back to the parent dir 
-```bash
-cd ..
+### Or if you want exact branch do:
+```
+cd ../GwSky
+git submodule update --remote --init --recursive
 ```
 
 ### Open each branch in VS Code
