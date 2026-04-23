@@ -1,0 +1,3 @@
+[submodule "messages/mavlink"]
+	path = messages/mavlink
+	url = https://github.com/filipradojevic/MavlinkDialects
