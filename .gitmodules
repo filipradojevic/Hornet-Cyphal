@@ -13,3 +13,6 @@
 [submodule "src/libs/Fusion/Fusion"]
 	path = src/libs/Fusion/Fusion
 	url = https://github.com/xioTechnologies/Fusion.git
+[submodule "messages/mavlink"]
+	path = messages/mavlink
+	url = https://github.com/filipradojevic/MavlinkDialects
