@@ -1,3 +1,4 @@
 [submodule "MavlinkDialects"]
 	path = MavlinkDialects
 	url = https://github.com/filipradojevic/MavlinkDialects.git
+	branch = master
