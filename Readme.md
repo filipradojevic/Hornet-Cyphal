@@ -1,21 +1,8 @@
 # APP SHELL
 
-This project is intended to be used as a starting point. Make sure to clone
-the repository using the ***--recurse-submodules*** flag to also pull the MAVLink
-XML definitions from [Hornet-MavlinkDialects](https://github.com/filipradojevic/MavlinkDialects):
-
-```bash
-git clone --recurse-submodules https://github.com/filipradojevic/Hornet-Cyphal.git
-```
-
-Project relies on multiple generators during the build stage, such as mavgen and
-ulog-gen, which are included as submodules. Because of these generators, which
-are written in Python, it is strongly recommended to create a dedicated Python
-virtual environment.
-
 ---
 
-## Git Workflow
+# Git Workflow
 
 ### Clone the project (all branches via worktree)
 
@@ -61,9 +48,35 @@ code .\Ins
 code .\PwrMan
 ```
 
+
+# If you want to change submodule:
+```
+cd MavlinkDialects
+```
+
+```
+git add .
+git commit -m "update mavlink dialects"
+git push origin master
+```
+
+### Then update new submodule on this repo 
+```
+cd ../Hornet-Cyphal
+git add MavlinkDialects
+git commit -m "bump submodule to latest"
+git push
+```
+
+### And follow always latest commit for mavlink dialects
+```
+git submodule update --init --recursive --remote
+```
+
+
 ---
 
-### Clone a single branch (lightweight)
+# Clone a single branch (lightweight)
 
 If you only need one specific branch, clone it directly with submodules:
 
