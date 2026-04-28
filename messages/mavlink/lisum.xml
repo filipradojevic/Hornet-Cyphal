@@ -181,6 +181,58 @@
 		</entry>
 	</enum>
 
+	<enum name="LISUM_MANUAL_CTRL_HORNET_ACT_ID">
+		<description>These values determine the actuator ID in the system.</description>
+		<entry value="0" name="ACTUATOR_ID_0">
+			<description>Actuator with id 0 in system.</description>
+		</entry>
+		<entry value="1" name="ACTUATOR_ID_1">
+			<description>Actuator with id 1 in system.</description>
+		</entry>
+		<entry value="2" name="ACTUATOR_ID_2">
+			<description>Actuator with id 2 in system.</description>
+		</entry>
+		<entry value="3" name="ACTUATOR_ID_3">
+			<description>Actuator with id 3 in system.</description>
+		</entry>
+		<entry value="4" name="ACTUATOR_ID_4">
+			<description>Actuator with id 4 in system.</description>
+		</entry>
+		<entry value="5" name="ACTUATOR_ID_5">
+			<description>Actuator with id 5 in system.</description>
+		</entry>
+		<entry value="6" name="ACTUATOR_ID_6">
+			<description>Actuator with id 6 in system.</description>
+		</entry>
+		<entry value="7" name="ACTUATOR_ID_7">
+			<description>Actuator with id 7 in system.</description>
+		</entry>
+		<entry value="8" name="ACTUATOR_ID_8">
+			<description>Actuator with id 8 in system.</description>
+		</entry>
+		<entry value="9" name="ACTUATOR_ID_9">
+			<description>Actuator with id 9 in system.</description>
+		</entry>
+		<entry value="10" name="ACTUATOR_ID_10">
+			<description>Actuator with id 10 in system.</description>
+		</entry>
+		<entry value="11" name="ACTUATOR_ID_11">
+			<description>Actuator with id 11 in system.</description>
+		</entry>
+		<entry value="12" name="ACTUATOR_ID_12">
+			<description>Actuator with id 12 in system.</description>
+		</entry>
+		<entry value="13" name="ACTUATOR_ID_13">
+			<description>Actuator with id 13 in system.</description>
+		</entry>
+		<entry value="14" name="ACTUATOR_ID_14">
+			<description>Actuator with id 14 in system.</description>
+		</entry>
+		<entry value="15" name="ACTUATOR_ID_15">
+			<description>Actuator with id 15 in system.</description>
+		</entry>
+	</enum>
+
 	<enum name="MAV_CMD">
 		<!-- Manual control/Hornet messages (59328 - 59335) -->
 		<entry value="59328" name="MAV_CMD_HORNET_HOMING" hasLocation="false" isDestination="false">
@@ -393,6 +445,18 @@
 		<field type="uint16_t" name="abs_enc_sw_act4">Absolute encoder statusword of Actuator 4</field>
 	</message>
 
+	<!-- Hornet actuator data new -->
+	<message id="59081" name="LISUM_POWER_BTP_ACT_DATA">
+		<description>New actuator data with act id</description>
+		<field type="uint8_t" name="act_id">Actuator ID</field>
+		<field type="float" name="pos_act" units="mm">Position of Actuator</field>
+		<field type="float" name="abs_pos_act" units="mm">Absolute Position of Actuator</field>
+		<field type="float" name="vel_act" units="mm/s">Velocity of Actuator</field>
+		<field type="float" name="curr_act" units="A">Current of Actuator</field>
+		<field type="uint16_t" name="sw_act">Statusword of Actuator</field>
+		<field type="uint16_t" name="abs_enc_sw_act">Absolute encoder statusword of Actuator</field>
+	</message>
+
 	<!-- ************************************************* -->
 	<!-- ************************************************* -->
 	<!-- ************************************************* -->
@@ -459,11 +523,9 @@
 	<!-- Hornet manual control -->
 	<message id="59328" name="LISUM_MANUAL_CTRL_HORNET">
 		<description>Hornet manual control.</description>
+		<field type="uint8_t" name="act_id" enum="LISUM_MANUAL_CTRL_HORNET_ACT_ID">Actuator IDs</field>
 		<field type="uint8_t" name="mode" enum="LISUM_HORNET_MODE">Operational Mode</field>
-		<field type="float" name="pos_sp_act1" units="mm">Position setpoint Actuator 1</field>
-		<field type="float" name="pos_sp_act2" units="mm">Position setpoint Actuator 2</field>
-		<field type="float" name="pos_sp_act3" units="mm">Position setpoint Actuator 3</field>
-		<field type="float" name="pos_sp_act4" units="mm">Position setpoint Actuator 4</field>
+		<field type="float" name="pos_sp_act" units="mm">Position setpoint Actuator</field>
 	</message>
 
 	<!-- ********************************** -->

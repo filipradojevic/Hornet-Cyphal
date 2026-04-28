@@ -447,7 +447,7 @@ void task_mav(void *arg)
 					TX_QUEUE_MUTEX_TAKE
 					{
 						validate = cyphal_publish_common_command_ack(
-							&canard, &tx_queue, CanardPriorityImmediate,
+							&canard, &tx_queue, CanardPriorityExceptional,
 							command_ack_buf, command_ack_sz,
 							&tid_common_command_ack, CYPHAL_MEDIUM_TIMEOUT);
 

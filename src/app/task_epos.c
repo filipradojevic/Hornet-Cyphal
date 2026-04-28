@@ -129,6 +129,7 @@ static epos_custom_eeprom_t eeprom[4];
 
 /** @note to be removed */
 static int32_t sp[4] = {0};
+static uint8_t act_id = 0;
 
 /*******************************************************************************
  * Prototypes
@@ -150,7 +151,7 @@ static uint32_t _epos_fault_reset(void);
 static uint32_t _epos_sweep(void);
 
 /* send setpoints to tracked EPOS devices */
-static void _epos_ctrl(int32_t *setpoints, uint16_t cw);
+static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw);
 
 /* get custom eeprom of all tracked EPOS devices */
 static uint32_t _epos_custom_eeprom_get(void);
@@ -219,22 +220,48 @@ void task_epos(void *arg)
 
 		/* process setpoints */
 		if (pdPASS == xQueueReceive(mailbox_epos_ctrl, &ctrl, 0)) {
-			int32_t tmp_sp[4] = {0};
-			int32_t limit[4] = {0};
+			int32_t tmp_sp = 0;
+			int32_t limit = 0;
 
-			tmp_sp[0] = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act1);
-			tmp_sp[1] = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act2);
-			tmp_sp[2] = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act3);
-			tmp_sp[3] = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act4);
+			// Take tmp set point
+			tmp_sp = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act);
 
-			limit[0] = (int32_t)(eeprom[0].param1 * -1);
-			limit[1] = (int32_t)(eeprom[1].param1 * -1);
-			limit[2] = (int32_t)(eeprom[2].param1 * -1);
-			limit[3] = (int32_t)(eeprom[3].param1 * -1);
+			// Take actuator id
+			act_id = ctrl.act_id;
 
-			for (uint32_t i = 0; i < sizeof(sp) / sizeof(sp[0]); i++) {
-				if (tmp_sp[i] <= 0 && tmp_sp[i] >= limit[i])
-					sp[i] = tmp_sp[i];
+			// Calculate real set point and check limits based on actuator id
+			switch (ctrl.act_id) {
+			case ACTUATOR_ID_0: {
+				limit = (int32_t)(eeprom[ACTUATOR_ID_0].param1 * -1);
+				if (tmp_sp <= 0 && tmp_sp >= limit) {
+					sp[ACTUATOR_ID_0] = tmp_sp;
+				}
+				break;
+			}
+			case ACTUATOR_ID_1: {
+				limit = (int32_t)(eeprom[ACTUATOR_ID_1].param1 * -1);
+				if (tmp_sp <= 0 && tmp_sp >= limit) {
+					sp[ACTUATOR_ID_1] = tmp_sp;
+				}
+				break;
+			}
+			case ACTUATOR_ID_2: {
+				limit = (int32_t)(eeprom[ACTUATOR_ID_2].param1 * -1);
+				if (tmp_sp <= 0 && tmp_sp >= limit) {
+					sp[ACTUATOR_ID_2] = tmp_sp;
+				}
+				break;
+			}
+			case ACTUATOR_ID_3: {
+				limit = (int32_t)(eeprom[ACTUATOR_ID_3].param1 * -1);
+				if (tmp_sp <= 0 && tmp_sp >= limit) {
+					sp[ACTUATOR_ID_3] = tmp_sp;
+				}
+				break;
+			}
+			default: {
+				break;
+			}
 			}
 		}
 
@@ -246,11 +273,11 @@ void task_epos(void *arg)
 			break;
 		case TASK_EPOS_STATE_READY_TO_ARM:
 			/* wait for arm */
-			_epos_ctrl(sp, 0x000E);
+			_epos_ctrl(act_id, sp, 0x000E);
 
 			break;
 		case TASK_EPOS_STATE_ARMED:
-			_epos_ctrl(sp, 0x000F);
+			_epos_ctrl(act_id, sp, 0x000F);
 
 			break;
 		default:
@@ -528,13 +555,10 @@ static uint32_t _epos_custom_eeprom_get(void)
 	return 0;
 }
 
-static void _epos_ctrl(int32_t *setpoints, uint16_t cw)
+static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw)
 {
-	/* iterate over all tracked EPOS devices */
-	for (uint8_t i = 0; i < epos.track_count; i++) {
-		/* send CSP control */
-		epos_csp_control(&epos, i, cw, *(setpoints + i));
-	}
+	/* send CSP control */
+	epos_csp_control(&epos, act_id, cw, *(setpoints + act_id));
 
 	epos_sync(&epos);
 }

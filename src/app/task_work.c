@@ -221,7 +221,7 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 			}
 		}
 
-		task_epos_cmd(&arr, heli_mav_sysid, heli_mav_compid);
+		task_epos_cmd(&data, heli_mav_sysid, heli_mav_compid);
 	}
 
 	case uavcan_primitive_array_Integer8_1_0_FIXED_PORT_ID_: {
