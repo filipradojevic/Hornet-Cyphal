@@ -92,6 +92,7 @@ TimerHandle_t timer_blinky;
 
 // Mutex
 SemaphoreHandle_t tx_queue_mutex;
+SemaphoreHandle_t mutex_mav;
 
 // Mailboxes
 QueueHandle_t mailbox_epos_ctrl;
@@ -105,6 +106,7 @@ QueueHandle_t queue_epos_cmd;
 QueueHandle_t queue_mav_ftp;
 QueueHandle_t queue_command_long;
 QueueHandle_t queue_cyphal_rx;
+QueueHandle_t queue_status_text_report;
 
 // QueueSets
 QueueSetHandle_t queueset_mav;
@@ -129,6 +131,9 @@ int main()
 	/* Mutexes */
 	tx_queue_mutex = xSemaphoreCreateMutex();
 
+	/* Mutexes */
+	mutex_mav = xSemaphoreCreateMutex();
+
 #if MAVLINK_OR_CYPHAL
 
 	queue_mav_hb = xQueueCreate(2, sizeof(mavlink_heartbeat_t));
@@ -148,11 +153,11 @@ int main()
 	queue_mav_hb = xQueueCreate(2, sizeof(mavlink_heartbeat_t));
 	/* Mailboxes */
 	mailbox_epos_ctrl = xQueueCreate(
-		1, sizeof(messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0));
+		20, sizeof(messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0));
 	queue_mav_ack =
 		xQueueCreate(4, sizeof(messages_cyphal_uavcan_common_CommandAck_1_0));
 	queue_mav_act_data = xQueueCreate(
-		5, sizeof(messages_cyphal_uavcan_lisum_LisumPowerHornetActData_1_0));
+		20, sizeof(messages_cyphal_uavcan_lisum_LisumPowerHornetActData_1_0));
 	queue_mav_manual_ctrl = xQueueCreate(
 		5, sizeof(messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0));
 
@@ -163,6 +168,9 @@ int main()
 
 	queue_epos_cmd =
 		xQueueCreate(4, sizeof(messages_cyphal_uavcan_common_CommandLong_1_0));
+
+	queue_status_text_report =
+		xQueueCreate(4, sizeof(messages_cyphal_uavcan_common_Statustext_1_0));
 
 	queue_cyphal_rx = xQueueCreate(10, sizeof(can_hal_msg_t));
 
@@ -184,6 +192,15 @@ int main()
 	HAL_GPIO_Init(GPIO_HAL_INSTANCE_3, 25, &gpio_cfg);
 	HAL_GPIO_Init(GPIO_HAL_INSTANCE_3, 26, &gpio_cfg);
 
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 4, &gpio_cfg);
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 5, &gpio_cfg);
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 6, &gpio_cfg);
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 7, &gpio_cfg);
+
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 0);
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 0);
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 6, 0);
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 7, 0);
 	/*--------------------------------- CAN ----------------------------------*/
 
 	HAL_CAN_Init(CAN_HAL_INSTANCE_0, 1000000);
@@ -205,6 +222,16 @@ int main()
 	HAL_GPIO_Init(GPIO_HAL_INSTANCE_2, 13, &gpio_can_cfg); // P2.13 CAN1_RD
 	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_2, 13, 0);	   // P2.13 LOW
 
+	// Init gpio for testing the spead of writing data in flash and erasing
+	gpio_hal_cfg_type_t gpio_test_cfg;
+	gpio_test_cfg.openDrain = GPIO_HAL_OPENDRAIN_NORMAL;
+	gpio_test_cfg.pinMode = GPIO_HAL_PINMODE_PULLDOWN;
+	gpio_test_cfg.pinDir = GPIO_HAL_OUTPUT;
+
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 4, &gpio_test_cfg); // Time for writing
+	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 5, &gpio_test_cfg); // Time for erasing
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 0); // Time for writing LOW
+	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 0); // Time for erasing LOW
 #else
 
 	/*--------------------------------- ETH ----------------------------------*/
@@ -236,7 +263,7 @@ int main()
 #if !MAVLINK_OR_CYPHAL
 
 	/* tx_can task - high priority */
-	xTaskCreate(task_tx_can, "tx_can", 256, NULL, 4, NULL);
+	xTaskCreate(task_tx_can, "tx_can", 128, NULL, 4, NULL);
 
 #endif /* MAVLINK_OR_CYPHAL */
 

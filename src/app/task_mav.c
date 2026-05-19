@@ -70,6 +70,9 @@ extern QueueHandle_t queue_mav_manual_ctrl;
 extern SemaphoreHandle_t tx_queue_mutex;
 extern QueueHandle_t queue_mav_ftp;
 extern QueueHandle_t queue_command_long;
+extern QueueHandle_t queue_status_text_report;
+
+extern task_epos_state_e task_epos_state;
 
 /* Extern temporary variables */
 extern uint64_t boot_time_ms;
@@ -123,13 +126,17 @@ static CanardTransferID tid_lisum_manual_ctrl_hornet = 0;
 static CanardTransferID tid_lisum_power_hornet_ack = 0;
 static CanardTransferID tid_common_command_ack = 0;
 static CanardTransferID tid_node_mode = 0;
-static CanardTransferID tid_command_long = 0; /* Task MAV */
+static CanardTransferID tid_command_long = 0;		/* Task MAV */
+static CanardTransferID tid_common_status_text = 0; /* Task MAV */
 static CanardTransferID tid_ftp = 0;
 
 static struct CanardRxSubscription sub_command_long_1_0;
 static struct CanardRxSubscription sub_lisum_manual_ctrl_hornet_1_0;
 
 /* Serialization buffers and sizes */
+static uint8_t common_status_text
+	[messages_cyphal_uavcan_common_Statustext_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_];
+static size_t common_status_text_sz = sizeof(common_status_text);
 
 static uint8_t lisum_manual_ctrl_hornet_buf
 	[messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_];
@@ -196,6 +203,12 @@ const char serial_number[] = SERIAL_NUMBER;
 const uint32_t time_manufacture_s = BUILD_UNIX_TIMESTAMP;
 
 static bl_t bl;
+
+static const enum CanardPriority act_priorities[] = {
+	CanardPriorityExceptional, CanardPriorityImmediate, CanardPriorityFast,
+	CanardPriorityHigh,		   CanardPriorityNominal,	CanardPriorityLow,
+	CanardPrioritySlow,		   CanardPriorityOptional,
+};
 
 /*******************************************************************************
  * Prototypes
@@ -283,6 +296,7 @@ void task_mav(void *arg)
 	uavcan_node_Mode_1_0 heartbeat;
 	mavlink_file_transfer_protocol_t ftp;
 	messages_cyphal_uavcan_common_ComponentInformationBasic_1_0 command_long;
+	messages_cyphal_uavcan_common_Statustext_1_0 status_text_report;
 
 	bl_process_update(&bl, &ftp);
 
@@ -333,7 +347,7 @@ void task_mav(void *arg)
 
 	for (;;) {
 
-		vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1));
+		// vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1));
 
 		if (compontent_info_time != 0 &&
 			xTaskGetTickCount() - compontent_info_time > pdMS_TO_TICKS(10)) {
@@ -347,6 +361,32 @@ void task_mav(void *arg)
 
 				TX_QUEUE_MUTEX_GIVE;
 			}
+		}
+
+		if (xQueueReceive(queue_status_text_report, &status_text_report, 0)) {
+
+#if !MAVLINK_OR_CYPHAL
+
+			if (messages_cyphal_uavcan_common_Statustext_1_0_serialize_(
+					&status_text_report, common_status_text,
+					&common_status_text_sz) >= 0) {
+				TX_QUEUE_MUTEX_TAKE
+				{
+					validate = cyphal_publish_common_statustext(
+						&canard, &tx_queue, CanardPriorityExceptional,
+						common_status_text, common_status_text_sz,
+						&tid_common_status_text, CYPHAL_MEDIUM_TIMEOUT);
+
+					TX_QUEUE_MUTEX_GIVE;
+				}
+			}
+#else
+
+			mavlink_msg_command_ack_encode(mav_handle.sysid, mav_handle.compid,
+										   &msg, &command_ack);
+
+			mav_send(&mav_handle, &msg);
+#endif /* MAVLINK_OR_CYPHAL */
 		}
 
 		if (xQueueReceive(queue_mav_hb, &heartbeat, 0)) {
@@ -463,9 +503,11 @@ void task_mav(void *arg)
 #endif /* MAVLINK_OR_CYPHAL */
 			}
 
-			if (xQueueReceive(queue_mav_act_data, &lisum_power_hornet_ack, 0)) {
+			while (
+				xQueueReceive(queue_mav_act_data, &lisum_power_hornet_ack, 0)) {
 
 #if !MAVLINK_OR_CYPHAL
+				uint8_t act_id = lisum_power_hornet_ack.act_id;
 
 				if (messages_cyphal_uavcan_lisum_LisumPowerHornetActData_1_0_serialize_(
 						&lisum_power_hornet_ack, lisum_power_hornet_ack_buf,
@@ -474,12 +516,12 @@ void task_mav(void *arg)
 					{
 						validate =
 							cyphal_publish_lisum_lisum_power_hornet_act_data_subject(
-								&canard, &tx_queue, CanardPriorityImmediate,
+								&canard, &tx_queue, act_priorities[act_id],
 								messages_cyphal_uavcan_lisum_LisumPowerHornetActData_1_0_FIXED_PORT_ID_,
 								lisum_power_hornet_ack_buf,
 								lisum_power_hornet_ack_sz,
 								&tid_lisum_power_hornet_ack,
-								CYPHAL_MEDIUM_TIMEOUT);
+								CYPHAL_LOW_TIMEOUT);
 
 						TX_QUEUE_MUTEX_GIVE;
 					}
@@ -594,6 +636,8 @@ static void timer_mav_hb_cb(TimerHandle_t xTimer)
 								  .base_mode = 0,
 								  .custom_mode = 0,
 								  .system_status = MAV_STATE_STANDBY};
+
+	mav_hb.custom_mode = task_epos_state;
 
 	xQueueSendToBack(queue_mav_hb, &mav_hb, 0);
 }

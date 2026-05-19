@@ -18,13 +18,14 @@
 
 /* Peripherals */
 #include "can.h"
+#include "gpio.h"
 
 /* External hardware drivers */
 #include "epos.h"
 #include "epos_csp.h"
 #include "epos_eeprom.h"
 #include "epos_homing.h"
-
+#include "epos_od.h"
 /* Lib */
 #include "canopen.h"
 
@@ -67,6 +68,7 @@ extern QueueHandle_t queue_mav_ack;
 extern QueueHandle_t queue_mav_act_data;
 extern QueueHandle_t queue_mav_manual_ctrl;
 extern QueueHandle_t queue_epos_cmd;
+extern QueueHandle_t queue_status_text_report;
 
 static const epos_cfg_t epos_cfg_data = {
 	.unit_cfg.pos_prefix = EPOS_UNIT_PREFIX_NONE,
@@ -121,6 +123,7 @@ static const epos_csp_cfg_t csp_cfg = {
 	.interpolation_time_period = CSP_INTERPOLATION_TIME_PERIOD};
 
 task_epos_state_e task_epos_state = TASK_EPOS_STATE_INIT;
+task_epos_state_e prev_task_epos_state = TASK_EPOS_STATE_INIT;
 
 static canopen_handle_t canopen;
 static epos_t epos;
@@ -129,7 +132,34 @@ static epos_custom_eeprom_t eeprom[4];
 
 /** @note to be removed */
 static int32_t sp[4] = {0};
-static uint8_t act_id = 0;
+
+static const uint32_t error_sectors[] = {
+	ACTUATOR_ERROR_SECTOR_0, ACTUATOR_ERROR_SECTOR_1, ACTUATOR_ERROR_SECTOR_2,
+	ACTUATOR_ERROR_SECTOR_3, ACTUATOR_ERROR_SECTOR_4, ACTUATOR_ERROR_SECTOR_5,
+	ACTUATOR_ERROR_SECTOR_6,
+};
+
+static uint8_t current_sector = 0;
+static uint8_t current_slot = 0;
+
+static actuator_error_t current_error = {0};
+
+static uint8_t current_page_buffer[256] __attribute__((aligned(4)));
+static uint8_t error_header_page[256] __attribute__((aligned(4)));
+
+static uint8_t boot_error_flagged = 0;
+static uint8_t unreported_errors_at_boot = 0;
+
+static uint32_t new_error_occures = 0;
+
+static uint8_t lisum_manual_ctrl_hornet_buf
+	[messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_];
+static size_t lisum_manual_ctrl_hornet_sz =
+	sizeof(lisum_manual_ctrl_hornet_buf);
+
+static uint8_t global_boot_cnt = 0;
+
+static uint8_t status_send_cnt = 0;
 
 /*******************************************************************************
  * Prototypes
@@ -149,6 +179,8 @@ static uint32_t _epos_fault_reset(void);
 
 /* perform full sweep on all tracked EPOS devices */
 static uint32_t _epos_sweep(void);
+
+static void _epos_ctrl2(uint8_t act_id, int32_t *setpoints, uint16_t cw);
 
 /* send setpoints to tracked EPOS devices */
 static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw);
@@ -170,6 +202,37 @@ static uint32_t _work_arm_disarm(uint8_t arm);
 
 /* process request */
 static void _process_request(mavlink_command_long_t *cmd);
+
+/* initialize actuator error logging */
+static void actuator_error_init(void);
+
+/* log actuator error to flash memory */
+static void actuator_error_log(actuator_error_t *err, epos_track_t *track,
+							   uint8_t boot_cnt);
+
+/* log actuator error from EPOS to flash memory */
+static void actuator_error_log_from_epos(actuator_error_t *err,
+										 epos_track_t *track, uint8_t boot_cnt);
+
+/* convert EPOS error code to string */
+static const char *_epos_error_to_str(uint32_t error_code);
+
+static const char *_epos_task_state_to_str(uint8_t task_epos_state);
+
+static void _epos_statusword_to_str(uint16_t sw, char *buf, size_t buf_size);
+
+static void load_current_page(void);
+
+static void error_header_find(uint32_t *out_write, uint32_t *out_reported,
+							  uint32_t *out_idx);
+
+static void error_header_mark_written(void);
+
+static void error_header_mark_reported(void);
+
+static void check_if_error_occurred_in_previous_boot(void);
+
+static uint32_t error_header_next_flag(uint32_t current);
 
 /*******************************************************************************
  * Code
@@ -193,91 +256,97 @@ void task_epos(void *arg)
 #endif /* MAVLINK_OR_CYPHAL */
 
 	TickType_t status_poll_time = xTaskGetTickCount();
-	TickType_t last_wake = xTaskGetTickCount();
 	uint8_t epos_id1;
+	uint8_t epos_id2 = 1;
+	uint8_t epos_id3 = 2;
+	uint8_t epos_id4 = 3;
+
+	static uint32_t last_remote_log_time = 0;
 
 	/*------------------------------- CANOpen --------------------------------*/
-	canopen_init(&canopen, CAN_HAL_INSTANCE_0, ACT_MASTER_NODE_ID);
+	canopen_init(&canopen, CAN_HAL_INSTANCE_0, ACT_MASTER_NODE_0_ID);
 
 	/*-------------------------------- EPOS ----------------------------------*/
 	epos_init(&epos, &canopen);
-	epos_id1 = epos_track(&epos, ACT1_NODE_ID);
+	epos_id1 = epos_track(&epos, ACT2_NODE_ID);
 
-	if (_epos_check() || _epos_custom_eeprom_get())
+	// Initialization of actuator error logging in flash memory
+	actuator_error_init();
+
+	check_if_error_occurred_in_previous_boot();
+
+	// Delay to ensure gnd and sky controllers are up and running before sending
+	// status text report
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	if (unreported_errors_at_boot) {
+		messages_cyphal_uavcan_common_Statustext_1_0 statustext;
+		statustext.severity = MAV_SEVERITY_ERROR;
+		statustext.id = 0;
+		statustext.chunk_seq = 0;
+		snprintf((char *)statustext.text, sizeof(statustext.text),
+				 "[EPOS ERROR] Error occures in last boot");
+
+		xQueueSendToBack(queue_status_text_report, &statustext, 0);
+
+		error_header_mark_reported();
+	}
+
+	if (_epos_check() || _epos_custom_eeprom_get()) {
+		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		task_epos_state = TASK_EPOS_STATE_INIT_FAILED;
-	else
+	} else {
 		task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
+	}
 
 	for (;;) {
-
-		vTaskDelayUntil(&last_wake,
-						pdMS_TO_TICKS(CSP_INTERPOLATION_TIME_PERIOD));
-
 		/* process commands */
 		if (pdPASS == xQueueReceive(queue_epos_cmd, &cmd, 0)) {
 			_process_request(&cmd);
 		}
 
 		/* process setpoints */
-		if (pdPASS == xQueueReceive(mailbox_epos_ctrl, &ctrl, 0)) {
-			int32_t tmp_sp = 0;
-			int32_t limit = 0;
+		while (xQueueReceive(mailbox_epos_ctrl, &ctrl, 0) == pdPASS) {
+			int32_t new_sp = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act);
 
-			// Take tmp set point
-			tmp_sp = (int32_t)TASK_EPOS_SP_CONV(ctrl.pos_sp_act);
-
-			// Take actuator id
-			act_id = ctrl.act_id;
-
-			// Calculate real set point and check limits based on actuator id
 			switch (ctrl.act_id) {
-			case ACTUATOR_ID_0: {
-				limit = (int32_t)(eeprom[ACTUATOR_ID_0].param1 * -1);
-				if (tmp_sp <= 0 && tmp_sp >= limit) {
-					sp[ACTUATOR_ID_0] = tmp_sp;
-				}
+			case 0:
+				sp[0] = new_sp;
 				break;
-			}
-			case ACTUATOR_ID_1: {
-				limit = (int32_t)(eeprom[ACTUATOR_ID_1].param1 * -1);
-				if (tmp_sp <= 0 && tmp_sp >= limit) {
-					sp[ACTUATOR_ID_1] = tmp_sp;
-				}
+			case 1:
+				sp[1] = new_sp;
 				break;
-			}
-			case ACTUATOR_ID_2: {
-				limit = (int32_t)(eeprom[ACTUATOR_ID_2].param1 * -1);
-				if (tmp_sp <= 0 && tmp_sp >= limit) {
-					sp[ACTUATOR_ID_2] = tmp_sp;
-				}
+			case 2:
+				sp[2] = new_sp;
 				break;
-			}
-			case ACTUATOR_ID_3: {
-				limit = (int32_t)(eeprom[ACTUATOR_ID_3].param1 * -1);
-				if (tmp_sp <= 0 && tmp_sp >= limit) {
-					sp[ACTUATOR_ID_3] = tmp_sp;
-				}
+			case 3:
+				sp[3] = new_sp;
 				break;
-			}
-			default: {
+			default:
 				break;
-			}
 			}
 		}
 
 		switch (task_epos_state) {
 		case TASK_EPOS_STATE_INIT_FAILED:
+
+			if (prev_task_epos_state != TASK_EPOS_STATE_INIT_FAILED) {
+				actuator_error_log(&current_error, &epos.track[0],
+								   global_boot_cnt);
+			}
+			prev_task_epos_state = task_epos_state;
+
 			/* do nothing, wait for init command */
 			epos_sync(&epos);
 
 			break;
 		case TASK_EPOS_STATE_READY_TO_ARM:
 			/* wait for arm */
-			_epos_ctrl(act_id, sp, 0x000E);
+			_epos_ctrl2(ctrl.act_id, sp, 0x000E);
 
 			break;
 		case TASK_EPOS_STATE_ARMED:
-			_epos_ctrl(act_id, sp, 0x000F);
+			_epos_ctrl(ctrl.act_id, sp, 0x000F);
 
 			break;
 		default:
@@ -301,6 +370,13 @@ void task_epos(void *arg)
 
 				/* check remote bit in statusword */
 				if (!(track->status & (1 << 9))) {
+					// Log just once in a second
+					if (xTaskGetTickCount() - last_remote_log_time >
+						pdMS_TO_TICKS(1000)) {
+						last_remote_log_time = xTaskGetTickCount();
+						actuator_error_log(&current_error, track,
+										   global_boot_cnt);
+					}
 					epos_mode(&epos, i, EPOS_OP_MODE_CSP);
 					continue;
 				}
@@ -308,10 +384,21 @@ void task_epos(void *arg)
 				/* check tracked EPOS device state */
 				switch (track->state) {
 				case EPOS_STATE_SWITCH_ON_DISABLED:
+					if (prev_task_epos_state != EPOS_STATE_SWITCH_ON_DISABLED) {
+						actuator_error_log(&current_error, track,
+										   global_boot_cnt);
+						prev_task_epos_state = EPOS_STATE_SWITCH_ON_DISABLED;
+					}
+
 					epos_enter_ready_to_switch_on(&epos, i);
 
 					break;
 				case EPOS_STATE_FAULT:
+					if (prev_task_epos_state != EPOS_STATE_FAULT) {
+						prev_task_epos_state = EPOS_STATE_FAULT;
+						actuator_error_log(&current_error, track,
+										   global_boot_cnt);
+					}
 					/* automatically reset fault in case of armed state */
 					if (task_epos_state == TASK_EPOS_STATE_ARMED)
 						epos_fault_reset(&epos, i);
@@ -323,18 +410,28 @@ void task_epos(void *arg)
 			}
 		}
 
-		/* send actuator data */
-		act_data.pos_act1 = epos.track[epos_id1].pos * TASK_EPOS_INC_TO_MM;
-		act_data.abs_pos_act1 = 0;
-		act_data.vel_act1 = epos.track[epos_id1].vel * TASK_EPOS_MMS_TO_RPM;
-		act_data.curr_act1 = epos.track[epos_id1].curr * TASK_EPOS_MA_TO_A;
-		act_data.sw_act1 = epos.track[epos_id1].status;
-		act_data.abs_enc_sw_act1 = 0;
+		if (status_send_cnt) {
+			status_send_cnt = 0;
 
-		xQueueSendToBack(queue_mav_act_data, &act_data, 0);
+			/* send actuator data */
+			for (uint8_t i = 0; i < 4; i++) { // hardcoded for 4 actuators
+				act_data.act_id = i;
+				act_data.pos_act = epos.track[i].pos * TASK_EPOS_INC_TO_MM;
+				act_data.abs_pos_act = 0;
+				act_data.vel_act = epos.track[i].vel * TASK_EPOS_MMS_TO_RPM;
+				act_data.curr_act = epos.track[i].curr * TASK_EPOS_MA_TO_A;
+				act_data.sw_act = epos.track[i].status;
+				act_data.abs_enc_sw_act = 0;
+				xQueueSendToBack(queue_mav_act_data, &act_data, 0);
+			}
+		} else {
+			status_send_cnt++;
+		}
 
 		/* echo actuator control back */
 		xQueueSendToBack(queue_mav_manual_ctrl, &ctrl, 0);
+
+		vTaskDelay(pdMS_TO_TICKS(CSP_INTERPOLATION_TIME_PERIOD));
 	}
 }
 
@@ -387,7 +484,7 @@ void task_epos_ctrl(
 	messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 *ctrl)
 {
 	/* send control to back of the queue */
-	xQueueOverwrite(mailbox_epos_ctrl, ctrl);
+	xQueueSend(mailbox_epos_ctrl, ctrl, 0);
 }
 
 #endif /* MAVLINK_OR_CYPHAL */
@@ -555,12 +652,36 @@ static uint32_t _epos_custom_eeprom_get(void)
 	return 0;
 }
 
-static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw)
+static void _epos_ctrl2(uint8_t act_id, int32_t *setpoints, uint16_t cw)
 {
+	/* iterate over all tracked EPOS devices */
+	// for (uint8_t i = 0; i < epos.track_count; i++) {
 	/* send CSP control */
-	epos_csp_control(&epos, act_id, cw, *(setpoints + act_id));
+	// epos_csp_control(&epos, act_id, cw, *(setpoints + act_id));
+	// TODO set for other epos devices!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	epos_csp_control(&epos, 0, cw, *(setpoints + act_id));
+	// }
 
 	epos_sync(&epos);
+}
+
+static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw)
+{
+	/* iterate over all tracked EPOS devices */
+	// for (uint8_t i = 0; i < epos.track_count; i++) {
+	/* send CSP control */
+	// epos_csp_control(&epos, act_id, cw, *(setpoints + act_id));
+	// TODO set for other epos devices!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// if (act_id == 1) {
+	epos_csp_control(&epos, 0, cw, *(setpoints + 0));
+	// }
+
+	epos_sync(&epos);
+	// }
+
+	for (uint8_t i = 0; i < ACTUATOR_NUMBER_TRACKING; i++) {
+		HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, i + 4, 0);
+	}
 }
 
 static uint32_t _work_init(void)
@@ -666,12 +787,14 @@ static uint32_t _work_arm_disarm(uint8_t arm)
 			return 1;
 
 		task_epos_state = TASK_EPOS_STATE_ARMED;
+		prev_task_epos_state = task_epos_state;
 	} else {
 		/* check if task is in valid state */
 		if (task_epos_state != TASK_EPOS_STATE_ARMED)
 			return 1;
 
 		task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
+		prev_task_epos_state = task_epos_state;
 	}
 
 	return 0;
@@ -689,6 +812,8 @@ static void _process_request(mavlink_command_long_t *cmd)
 		else // go to ready to arm state
 			task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
 
+		prev_task_epos_state = task_epos_state;
+
 		break;
 	case MAV_CMD_HORNET_ARM_DISARM:
 		ret = _work_arm_disarm(cmd->param1);
@@ -701,6 +826,8 @@ static void _process_request(mavlink_command_long_t *cmd)
 		else // go to ready to arm state
 			task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
 
+		prev_task_epos_state = task_epos_state;
+
 		break;
 	case MAV_CMD_HORNET_FAULT_RESET:
 		ret = _work_fault_reset();
@@ -712,6 +839,8 @@ static void _process_request(mavlink_command_long_t *cmd)
 			task_epos_state = TASK_EPOS_STATE_INIT_FAILED;
 		else // go to ready to arm state
 			task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
+
+		prev_task_epos_state = task_epos_state;
 
 		break;
 	default:
@@ -730,6 +859,7 @@ static void _process_request(mavlink_command_long_t *cmd)
 
 	switch (ret) {
 	case -1: // unsupported command
+		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		ack.command = cmd->command;
 		ack.result = MAV_RESULT_UNSUPPORTED;
 		ack.progress = (uint8_t)-1;
@@ -748,6 +878,8 @@ static void _process_request(mavlink_command_long_t *cmd)
 
 		break;
 	default: // command failed
+
+		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		ack.command = cmd->command;
 		ack.result = MAV_RESULT_FAILED;
 		ack.progress = (uint8_t)-1;
@@ -759,4 +891,281 @@ static void _process_request(mavlink_command_long_t *cmd)
 	}
 
 	xQueueSendToBack(queue_mav_ack, &ack, 0);
+}
+
+static void actuator_error_init(void)
+{
+	for (uint8_t s = 0; s < ERROR_SECTOR_COUNT; s++) {
+		for (uint16_t slot = 0; slot < ERROR_SLOTS_PER_SECTOR; slot++) {
+
+			uint32_t addr = error_sectors[s] + slot * ERROR_SLOT_SIZE;
+			uint32_t stored_num = *(volatile uint32_t *)(addr);
+
+			if (stored_num == 0xFFFFFFFF) {
+				global_boot_cnt =
+					*(volatile uint16_t *)(addr - 1); // get boot count
+
+				global_boot_cnt++; // increment boot count for the new error log
+				current_sector = s;
+				current_slot = slot;
+				load_current_page();
+				return;
+			}
+		}
+	}
+
+	// Sve popunjeno - briši sektor 0, kreni iznova
+	current_sector = 0;
+	current_slot = 0;
+
+	global_boot_cnt =
+		*(volatile uint16_t *)(IAP_HAL_SECTOR_16_ADDR - 1); // get boot count
+
+	global_boot_cnt++;
+
+	__disable_irq();
+	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(error_sectors[0]);
+	HAL_IAP_PrepareSector(sec, sec);
+	HAL_IAP_EraseSector(sec, sec);
+	__enable_irq();
+
+	load_current_page();
+}
+
+static void actuator_error_log(actuator_error_t *err, epos_track_t *track,
+							   uint8_t boot_cnt)
+{
+	actuator_error_log_from_epos(err, track, boot_cnt);
+
+	uint8_t page_slot = current_slot % ERROR_SLOTS_PER_PAGE;
+	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
+	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
+
+	memcpy(current_page_buffer + page_slot * sizeof(actuator_error_t), err,
+		   sizeof(actuator_error_t));
+
+	__disable_irq();
+	iap_hal_sector_num_t sec =
+		HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
+	HAL_IAP_PrepareSector(sec, sec);
+	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, current_page_buffer,
+						  IAP_HAL_WRITE_256);
+	__enable_irq();
+
+	current_slot++;
+
+	if (current_slot >= ERROR_SLOTS_PER_SECTOR) {
+		current_slot = 0;
+		current_sector = (current_sector + 1) % ERROR_SECTOR_COUNT;
+
+		__disable_irq();
+		sec = HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
+		HAL_IAP_PrepareSector(sec, sec);
+		HAL_IAP_EraseSector(sec, sec);
+		__enable_irq();
+	}
+
+	load_current_page();
+
+	if (new_error_occures == 0) {
+		error_header_mark_written();
+		new_error_occures++;
+	} else {
+		new_error_occures++;
+	}
+}
+
+static void actuator_error_log_from_epos(actuator_error_t *err,
+										 epos_track_t *track, uint8_t boot_cnt)
+{
+	uint8_t epos_idx = (uint8_t)(track - epos.track);
+
+	// num_error = fiksna pozicija u flash-u, ne brojač
+	err->num_error =
+		(uint16_t)(current_sector * ERROR_SLOTS_PER_SECTOR + current_slot);
+	err->statusword = track->status;
+	err->task_state = (uint8_t)task_epos_state;
+	err->uc_boot_cnt = boot_cnt;
+
+	if (epos_idx < epos.track_count) {
+		uint32_t full_error_code = 0;
+		if (epos_obj_read(&epos, epos_idx, &ObjErrorHistory1,
+						  &full_error_code) != 0) {
+			err->error_code = 0xFFFF;
+		} else {
+			err->error_code = (uint16_t)(full_error_code & 0xFFFF);
+		}
+	}
+}
+
+static void load_current_page(void)
+{
+	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
+	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
+	memcpy(current_page_buffer, (const uint8_t *)page_addr, 256);
+}
+
+/* find current active header slot */
+static void error_header_find(uint32_t *out_write, uint32_t *out_reported,
+							  uint32_t *out_idx)
+{
+	for (uint32_t i = 0; i < ERROR_HEADER_SLOTS_MAX; i++) {
+		uint32_t addr = ERROR_HEADER_ADDR + i * ERROR_HEADER_SLOT_SIZE;
+		uint32_t w = *(volatile uint32_t *)(addr);
+		uint32_t r = *(volatile uint32_t *)(addr + 4);
+
+		if (w == ERROR_HEADER_FLAG_FRESH && r == ERROR_HEADER_FLAG_FRESH) {
+			/* prvi slobodan slot - prethodni je aktivan */
+			if (i == 0) {
+				/* sektor potpuno prazan, nikad nije bilo errora */
+				*out_write = ERROR_HEADER_FLAG_FRESH;
+				*out_reported = ERROR_HEADER_FLAG_FRESH;
+				*out_idx = 0;
+			} else {
+				uint32_t prev =
+					ERROR_HEADER_ADDR + (i - 1) * ERROR_HEADER_SLOT_SIZE;
+				*out_write = *(volatile uint32_t *)(prev);
+				*out_reported = *(volatile uint32_t *)(prev + 4);
+				*out_idx = i - 1;
+			}
+			return;
+		}
+
+		/* oba 0x00 - slot iskorišćen do kraja, nastavi */
+		if (w == 0x00000000 && r == 0x00000000)
+			continue;
+
+		/* aktivan slot */
+		*out_write = w;
+		*out_reported = r;
+		*out_idx = i;
+		return;
+	}
+
+	/* sektor pun */
+	*out_write = 0x00000000;
+	*out_reported = 0x00000000;
+	*out_idx = ERROR_HEADER_SLOTS_MAX;
+}
+
+/* spusti jedan bit u write flag - samo jednom po bootu */
+static void error_header_mark_written(void)
+{
+	if (boot_error_flagged)
+		return;
+
+	uint32_t w, r, idx;
+	error_header_find(&w, &r, &idx);
+
+	uint32_t write_addr;
+
+	if (idx >= ERROR_HEADER_SLOTS_MAX) {
+		/* sektor pun -> erase */
+		__disable_irq();
+		iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+
+		HAL_IAP_PrepareSector(sec, sec);
+		HAL_IAP_EraseSector(sec, sec);
+		__enable_irq();
+
+		idx = 0;
+		w = ERROR_HEADER_FLAG_FRESH; /* 0xFFFFFFFF */
+	}
+
+	/* trenutni slot */
+	write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
+
+	/* ako je stigao do 0 -> idi na sledeci slot */
+	if (w == 0x00000000) {
+
+		idx++;
+
+		if (idx >= ERROR_HEADER_SLOTS_MAX) {
+
+			/* erase i kreni ispocetka */
+			__disable_irq();
+			iap_hal_sector_num_t sec =
+				HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+
+			HAL_IAP_PrepareSector(sec, sec);
+			HAL_IAP_EraseSector(sec, sec);
+			__enable_irq();
+
+			idx = 0;
+		}
+
+		write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
+
+		w = ERROR_HEADER_FLAG_FRESH;
+	}
+
+	/* spusti jedan bit */
+	uint32_t new_w = error_header_next_flag(w);
+
+	uint32_t page_addr = write_addr & ~(0xFF);
+	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
+
+	uint32_t offset_in_page = write_addr - page_addr;
+
+	memcpy(error_header_page + offset_in_page, &new_w, sizeof(uint32_t));
+
+	__disable_irq();
+
+	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+
+	HAL_IAP_PrepareSector(sec, sec);
+
+	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
+						  IAP_HAL_WRITE_256);
+
+	__enable_irq();
+
+	boot_error_flagged = 1;
+}
+
+static void error_header_mark_reported(void)
+{
+	uint32_t w, r, idx;
+	error_header_find(&w, &r, &idx);
+
+	if (w == ERROR_HEADER_FLAG_FRESH || w == r)
+		return;
+
+	/* reported = w, spuštamo iste bite kao w, bez erase! */
+	uint32_t reported_addr =
+		ERROR_HEADER_ADDR + idx * ERROR_HEADER_SLOT_SIZE + 4;
+
+	uint32_t page_addr = reported_addr & ~(0xFF);
+	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
+
+	uint32_t offset_in_page = reported_addr - page_addr;
+	memcpy(error_header_page + offset_in_page, &w, sizeof(uint32_t));
+
+	__disable_irq();
+	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+	HAL_IAP_PrepareSector(sec, sec);
+	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
+						  IAP_HAL_WRITE_256);
+	__enable_irq();
+}
+
+static void check_if_error_occurred_in_previous_boot(void)
+{
+	uint32_t w, r, idx;
+	error_header_find(&w, &r, &idx);
+
+	/* write spušten a reported nije → prošli boot imao errora */
+	if (w != ERROR_HEADER_FLAG_FRESH && w != r)
+		unreported_errors_at_boot = 1;
+}
+
+static uint32_t error_header_next_flag(uint32_t current)
+{
+	/* traži prvi bit koji je još 1, spusti ga */
+	for (int i = 0; i < 32; i++) {
+		if (current & (1u << i)) {
+			return current & ~(1u << i);
+		}
+	}
+	return 0x00000000; /* svi biti spušteni */
 }

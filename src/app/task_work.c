@@ -35,6 +35,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "gpio.h"
 #include "udp.h"
 
 #include "types.h"
@@ -45,6 +46,10 @@
 /* gratuitous ARP period [ms] */
 #define ARP_GRAT_PERIOD_MS 10000
 
+uint8_t cnt0 = 0;
+uint8_t cnt1 = 0;
+uint8_t cnt2 = 0;
+uint8_t cnt3 = 0;
 /*******************************************************************************
  * Typedefs
  ******************************************************************************/
@@ -58,6 +63,7 @@ extern volatile node_mode_state_t current_node_mode;
 
 extern struct CanardTxQueue tx_queue;
 extern struct CanardInstance canard;
+extern SemaphoreHandle_t mutex_mav;
 
 const uint8_t heli_mav_sysid = 0;
 const uint8_t heli_mav_compid = MAV_COMP_ID_USER52;
@@ -142,7 +148,11 @@ void task_work(void *arg)
 
 #else
 		while (xQueueReceive(queue_cyphal_rx, &rx, 0) == pdPASS) {
-			cyphal_process(&canard, rx);
+			TX_QUEUE_MUTEX_TAKE
+			{
+				cyphal_process(&canard, rx);
+				TX_QUEUE_MUTEX_GIVE;
+			}
 		}
 
 #endif /* MAVLINK_OR_CYPHAL */
@@ -165,6 +175,24 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 			messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_deserialize_(
 				&arr, (const uint8_t *)tr->payload.data, &in_size);
 
+		switch (arr.act_id) {
+		case 0:
+			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 1);
+
+			break;
+		case 1:
+			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 1);
+
+			break;
+		case 2:
+			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 6, 1);
+
+			break;
+		case 3:
+			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 7, 1);
+
+			break;
+		}
 		if (rc == 0) {
 			task_epos_ctrl(&arr);
 		}

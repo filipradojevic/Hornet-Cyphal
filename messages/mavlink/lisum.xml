@@ -419,30 +419,13 @@
 	<!-- Hornet actuator data -->
 	<message id="59080" name="LISUM_POWER_HORNET_ACT_DATA">
 		<description>Hornet actuator data.</description>
-		<field type="float" name="pos_act1" units="mm">Position of Actuator 1</field>
-		<field type="float" name="abs_pos_act1" units="mm">Absolute Position of Actuator 1</field>
-		<field type="float" name="vel_act1" units="mm/s">Velocity of Actuator 1</field>
-		<field type="float" name="curr_act1" units="A">Current of Actuator 1</field>
-		<field type="uint16_t" name="sw_act1">Statusword of Actuator 1</field>
-		<field type="uint16_t" name="abs_enc_sw_act1">Absolute encoder statusword of Actuator 1</field>
-		<field type="float" name="pos_act2" units="mm">Position of Actuator 2</field>
-		<field type="float" name="abs_pos_act2" units="mm">Absolute Position of Actuator 2</field>
-		<field type="float" name="vel_act2" units="mm/s">Velocity of Actuator 2</field>
-		<field type="float" name="curr_act2" units="A">Current of Actuator 2</field>
-		<field type="uint16_t" name="sw_act2">Statusword of Actuator 2</field>
-		<field type="uint16_t" name="abs_enc_sw_act2">Absolute encoder statusword of Actuator 2</field>
-		<field type="float" name="pos_act3" units="mm">Position of Actuator 3</field>
-		<field type="float" name="abs_pos_act3" units="mm">Absolute Position of Actuator 3</field>
-		<field type="float" name="vel_act3" units="mm/s">Velocity of Actuator 3</field>
-		<field type="float" name="curr_act3" units="A">Current of Actuator 3</field>
-		<field type="uint16_t" name="sw_act3">Statusword of Actuator 3</field>
-		<field type="uint16_t" name="abs_enc_sw_act3">Absolute encoder statusword of Actuator 3</field>
-		<field type="float" name="pos_act4" units="mm">Position of Actuator 4</field>
-		<field type="float" name="abs_pos_act4" units="mm">Absolute Position of Actuator 4</field>
-		<field type="float" name="vel_act4" units="mm/s">Velocity of Actuator 4</field>
-		<field type="float" name="curr_act4" units="A">Current of Actuator 4</field>
-		<field type="uint16_t" name="sw_act4">Statusword of Actuator 4</field>
-		<field type="uint16_t" name="abs_enc_sw_act4">Absolute encoder statusword of Actuator 4</field>
+		<field type="uint8_t" name="act_id" >Id of current actuator</field>
+		<field type="float" name="pos_act" units="mm">Position of Actuator</field>
+		<field type="float" name="abs_pos_act" units="mm">Absolute Position of Actuator</field>
+		<field type="float" name="vel_act" units="mm/s">Velocity of Actuator</field>
+		<field type="float" name="curr_act" units="A">Current of Actuator</field>
+		<field type="uint16_t" name="sw_act">Statusword of Actuator</field>
+		<field type="uint16_t" name="abs_enc_sw_act">Absolute encoder statusword of Actuator</field>
 	</message>
 
 	<!-- Hornet actuator data new -->

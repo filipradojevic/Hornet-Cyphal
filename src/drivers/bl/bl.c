@@ -208,6 +208,19 @@ bl_status_t bl_process_update(bl_t *bl,
 	return BL_STATUS_SUCCESS;
 }
 
+static uint8_t bl_is_sector_erased(uint32_t addr, uint32_t size)
+{
+	uint32_t *p = (uint32_t *)addr;
+
+	for (uint32_t i = 0; i < size / 4; i++) {
+		if (p[i] != 0xFFFFFFFF) {
+			return 0; // not erased
+		}
+	}
+
+	return 1; // all is 0xFFFFFFFF
+}
+
 bl_status_t bl_sector_update(bl_t *bl)
 {
 	bl->sector_num = HAL_IAP_GetSectorNumber(bl->current_write_addr);
@@ -215,6 +228,13 @@ bl_status_t bl_sector_update(bl_t *bl)
 
 	/* Remember which sector was erased to avoid redundant erases */
 	bl->last_erased_sector_addr = bl->sector_addr;
+
+	uint32_t sector_size = (bl->sector_num < 16) ? 4 * 1024 : 32 * 1024;
+
+	if (bl_is_sector_erased(bl->sector_addr, sector_size)) {
+		// already cleared no need for this
+		return BL_STATUS_SUCCESS;
+	}
 
 	/* Prepare + erase must be atomic (no interrupts allowed during IAP) */
 	__disable_irq();

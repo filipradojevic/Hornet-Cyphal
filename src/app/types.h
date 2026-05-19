@@ -39,17 +39,21 @@ extern "C" {
 
 #include "mavlink/messages_cyphal_uavcan/common/CommandAck_1_0.h"
 #include "mavlink/messages_cyphal_uavcan/common/CommandLong_1_0.h"
+#include "mavlink/messages_cyphal_uavcan/common/Statustext_1_0.h"
 
 /* Heartbeat */
 #include "mavlink/messages_cyphal_uavcan/common/ComponentInformationBasic_1_0.h"
 #include "mavlink/messages_cyphal_uavcan/minimal/Heartbeat_1_0.h"
 #include "uavcan/node/Mode_1_0.h"
 #include "uavcan/primitive/array/Integer8_1_0.h"
+
 /*******************************************************************************
  * Defines
  ******************************************************************************/
 
 #define MAVLINK_OR_CYPHAL 0 /* 1: MAVLink + Cyphal, 0: only MAVLink */
+
+#define ACTUATOR_NUMBER_TRACKING 4
 
 /* Cyphal timeouts [us] */
 #define CYPHAL_CRITICAL_TIMEOUT 10000U

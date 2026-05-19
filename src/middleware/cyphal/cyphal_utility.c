@@ -171,7 +171,7 @@ int8_t cyphal_default_tx_handler(void *user_ref,
 	msg.frameType = CAN_HAL_DATA_FRAME;
 	msg.length = (uint8_t)frame->payload.size;
 	memcpy(msg.data, frame->payload.data, msg.length);
-	const lStatus_t st = HAL_CAN_SendMessage(CAN_HAL_INSTANCE_1, &msg, 1000);
+	const lStatus_t st = HAL_CAN_SendMessage(CAN_HAL_INSTANCE_1, &msg, 0);
 	if (st == lStatus_Success) {
 		return 1; /* transmitted */
 	}

@@ -22,6 +22,8 @@ extern "C" {
 
 #include "mav.h"
 
+#include "iap.h" // For saving data to flash for actuator errors
+
 /*******************************************************************************
  * Defines
  ******************************************************************************/
@@ -40,7 +42,7 @@ extern "C" {
 #define TASK_EPOS_HOMING_TIMEOUT_MS 20000
 
 /* actuator master node id */
-#define ACT_MASTER_NODE_ID 0
+#define ACT_MASTER_NODE_0_ID 0
 /* first actuator canopen node id */
 #define ACT1_NODE_ID 1
 /* second actuator canopen node id */
@@ -134,9 +136,51 @@ extern "C" {
 /* cyclic synchronous position mode interpolation time period */
 #define CSP_INTERPOLATION_TIME_PERIOD 5
 
+#define ERROR_SECTOR_COUNT 7
+#define ERROR_SLOT_SIZE 8
+#define ERROR_SLOTS_PER_PAGE 32
+#define ERROR_SLOTS_PER_SECTOR 512
+
+#define ERROR_HEADER_ADDR IAP_HAL_SECTOR_15_ADDR /* zadnji sektor RESERVED */
+#define ERROR_HEADER_SLOT_SIZE 8				 /* write(4) + reported(4) */
+#define ERROR_HEADER_SLOTS_MAX (4096 / ERROR_HEADER_SLOT_SIZE)
+
+#define ERROR_HEADER_FLAG_FRESH 0xFFFFFFFF
+#define ERROR_HEADER_FLAG_SET 0xFEFFFFFF
+
 /*******************************************************************************
  * Typedefs
  ******************************************************************************/
+
+typedef enum actuator_error_sector_e {
+	ACTUATOR_ERROR_SECTOR_0 = IAP_HAL_SECTOR_8_ADDR,
+	ACTUATOR_ERROR_SECTOR_1 = IAP_HAL_SECTOR_9_ADDR,
+	ACTUATOR_ERROR_SECTOR_2 = IAP_HAL_SECTOR_10_ADDR,
+	ACTUATOR_ERROR_SECTOR_3 = IAP_HAL_SECTOR_11_ADDR,
+	ACTUATOR_ERROR_SECTOR_4 = IAP_HAL_SECTOR_12_ADDR,
+	ACTUATOR_ERROR_SECTOR_5 = IAP_HAL_SECTOR_13_ADDR,
+	ACTUATOR_ERROR_SECTOR_6 = IAP_HAL_SECTOR_14_ADDR,
+} actuator_error_sector_e;
+
+#pragma pack(push, 1)
+typedef struct {
+	uint32_t last_error_flag;
+	uint32_t last_reported_flag;
+} actuator_last_error_t;
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct {
+	uint16_t
+		num_error; // number of error and position in flash where it is stored
+	uint16_t error_code; /* real cause of error from EPOS, more specific than
+							 error register */
+	uint16_t statusword; // Status of EPOS at the time of error
+	uint8_t task_state;	 // state of task_epos at the time of error
+	uint8_t uc_boot_cnt; // Increment every time the system boots, to track if
+						 // error is from current boot or previous boots
+} actuator_error_t;
+#pragma pack(pop)
 
 typedef enum task_epos_state_e {
 	TASK_EPOS_STATE_INIT_FAILED = -1,
