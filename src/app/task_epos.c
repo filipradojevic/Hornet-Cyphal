@@ -35,6 +35,9 @@
 #include "semphr.h"
 #include "timers.h"
 
+#include "lpc17xx_uart.h"
+#include "uart.h"
+
 /*******************************************************************************
  * Defines
  ******************************************************************************/
@@ -271,32 +274,32 @@ void task_epos(void *arg)
 	epos_id1 = epos_track(&epos, ACT2_NODE_ID);
 
 	// Initialization of actuator error logging in flash memory
-	actuator_error_init();
+	// actuator_error_init();
 
-	check_if_error_occurred_in_previous_boot();
+	// check_if_error_occurred_in_previous_boot();
 
 	// Delay to ensure gnd and sky controllers are up and running before sending
 	// status text report
-	vTaskDelay(pdMS_TO_TICKS(5000));
+	// vTaskDelay(pdMS_TO_TICKS(5000));
 
-	if (unreported_errors_at_boot) {
-		messages_cyphal_uavcan_common_Statustext_1_0 statustext;
-		statustext.severity = MAV_SEVERITY_ERROR;
-		statustext.id = 0;
-		statustext.chunk_seq = 0;
-		snprintf((char *)statustext.text, sizeof(statustext.text),
-				 "[EPOS ERROR] Error occures in last boot");
+	// if (unreported_errors_at_boot) {
+	// 	messages_cyphal_uavcan_common_Statustext_1_0 statustext;
+	// 	statustext.severity = MAV_SEVERITY_ERROR;
+	// 	statustext.id = 0;
+	// 	statustext.chunk_seq = 0;
+	// 	snprintf((char *)statustext.text, sizeof(statustext.text),
+	// 			 "[EPOS ERROR] Error occures in last boot");
 
-		xQueueSendToBack(queue_status_text_report, &statustext, 0);
+	// 	xQueueSendToBack(queue_status_text_report, &statustext, 0);
 
-		error_header_mark_reported();
-	}
+	// 	error_header_mark_reported();
+	// }
 
 	if (_epos_check() || _epos_custom_eeprom_get()) {
-		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
+		// actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		task_epos_state = TASK_EPOS_STATE_INIT_FAILED;
 	} else {
-		task_epos_state = TASK_EPOS_STATE_READY_TO_ARM;
+		task_epos_state = TASK_EPOS_STATE_ARMED;
 	}
 
 	for (;;) {
@@ -331,8 +334,8 @@ void task_epos(void *arg)
 		case TASK_EPOS_STATE_INIT_FAILED:
 
 			if (prev_task_epos_state != TASK_EPOS_STATE_INIT_FAILED) {
-				actuator_error_log(&current_error, &epos.track[0],
-								   global_boot_cnt);
+				// actuator_error_log(&current_error, &epos.track[0],
+				// 				   global_boot_cnt);
 			}
 			prev_task_epos_state = task_epos_state;
 
@@ -374,8 +377,8 @@ void task_epos(void *arg)
 					if (xTaskGetTickCount() - last_remote_log_time >
 						pdMS_TO_TICKS(1000)) {
 						last_remote_log_time = xTaskGetTickCount();
-						actuator_error_log(&current_error, track,
-										   global_boot_cnt);
+						// actuator_error_log(&current_error, track,
+						// 				   global_boot_cnt);
 					}
 					epos_mode(&epos, i, EPOS_OP_MODE_CSP);
 					continue;
@@ -385,8 +388,8 @@ void task_epos(void *arg)
 				switch (track->state) {
 				case EPOS_STATE_SWITCH_ON_DISABLED:
 					if (prev_task_epos_state != EPOS_STATE_SWITCH_ON_DISABLED) {
-						actuator_error_log(&current_error, track,
-										   global_boot_cnt);
+						// actuator_error_log(&current_error, track,
+						// 				   global_boot_cnt);
 						prev_task_epos_state = EPOS_STATE_SWITCH_ON_DISABLED;
 					}
 
@@ -396,8 +399,8 @@ void task_epos(void *arg)
 				case EPOS_STATE_FAULT:
 					if (prev_task_epos_state != EPOS_STATE_FAULT) {
 						prev_task_epos_state = EPOS_STATE_FAULT;
-						actuator_error_log(&current_error, track,
-										   global_boot_cnt);
+						// actuator_error_log(&current_error, track,
+						// 				   global_boot_cnt);
 					}
 					/* automatically reset fault in case of armed state */
 					if (task_epos_state == TASK_EPOS_STATE_ARMED)
@@ -414,7 +417,8 @@ void task_epos(void *arg)
 			status_send_cnt = 0;
 
 			/* send actuator data */
-			for (uint8_t i = 0; i < 4; i++) { // hardcoded for 4 actuators
+			for (uint8_t i = 0; i < 1; i++) { // hardcoded for 4 actuators
+
 				act_data.act_id = i;
 				act_data.pos_act = epos.track[i].pos * TASK_EPOS_INC_TO_MM;
 				act_data.abs_pos_act = 0;
@@ -667,21 +671,9 @@ static void _epos_ctrl2(uint8_t act_id, int32_t *setpoints, uint16_t cw)
 
 static void _epos_ctrl(uint8_t act_id, int32_t *setpoints, uint16_t cw)
 {
-	/* iterate over all tracked EPOS devices */
-	// for (uint8_t i = 0; i < epos.track_count; i++) {
-	/* send CSP control */
-	// epos_csp_control(&epos, act_id, cw, *(setpoints + act_id));
-	// TODO set for other epos devices!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	// if (act_id == 1) {
+
 	epos_csp_control(&epos, 0, cw, *(setpoints + 0));
-	// }
-
 	epos_sync(&epos);
-	// }
-
-	for (uint8_t i = 0; i < ACTUATOR_NUMBER_TRACKING; i++) {
-		HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, i + 4, 0);
-	}
 }
 
 static uint32_t _work_init(void)
@@ -859,7 +851,7 @@ static void _process_request(mavlink_command_long_t *cmd)
 
 	switch (ret) {
 	case -1: // unsupported command
-		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
+		// actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		ack.command = cmd->command;
 		ack.result = MAV_RESULT_UNSUPPORTED;
 		ack.progress = (uint8_t)-1;
@@ -879,7 +871,7 @@ static void _process_request(mavlink_command_long_t *cmd)
 		break;
 	default: // command failed
 
-		actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
+		// actuator_error_log(&current_error, &epos.track[0], global_boot_cnt);
 		ack.command = cmd->command;
 		ack.result = MAV_RESULT_FAILED;
 		ack.progress = (uint8_t)-1;
@@ -893,279 +885,279 @@ static void _process_request(mavlink_command_long_t *cmd)
 	xQueueSendToBack(queue_mav_ack, &ack, 0);
 }
 
-static void actuator_error_init(void)
-{
-	for (uint8_t s = 0; s < ERROR_SECTOR_COUNT; s++) {
-		for (uint16_t slot = 0; slot < ERROR_SLOTS_PER_SECTOR; slot++) {
+// static void actuator_error_init(void)
+// {
+// 	for (uint8_t s = 0; s < ERROR_SECTOR_COUNT; s++) {
+// 		for (uint16_t slot = 0; slot < ERROR_SLOTS_PER_SECTOR; slot++) {
 
-			uint32_t addr = error_sectors[s] + slot * ERROR_SLOT_SIZE;
-			uint32_t stored_num = *(volatile uint32_t *)(addr);
+// 			uint32_t addr = error_sectors[s] + slot * ERROR_SLOT_SIZE;
+// 			uint32_t stored_num = *(volatile uint32_t *)(addr);
 
-			if (stored_num == 0xFFFFFFFF) {
-				global_boot_cnt =
-					*(volatile uint16_t *)(addr - 1); // get boot count
+// 			if (stored_num == 0xFFFFFFFF) {
+// 				global_boot_cnt =
+// 					*(volatile uint16_t *)(addr - 1); // get boot count
 
-				global_boot_cnt++; // increment boot count for the new error log
-				current_sector = s;
-				current_slot = slot;
-				load_current_page();
-				return;
-			}
-		}
-	}
+// 				global_boot_cnt++; // increment boot count for the new error log
+// 				current_sector = s;
+// 				current_slot = slot;
+// 				load_current_page();
+// 				return;
+// 			}
+// 		}
+// 	}
 
-	// Sve popunjeno - briši sektor 0, kreni iznova
-	current_sector = 0;
-	current_slot = 0;
+// 	// Sve popunjeno - briši sektor 0, kreni iznova
+// 	current_sector = 0;
+// 	current_slot = 0;
 
-	global_boot_cnt =
-		*(volatile uint16_t *)(IAP_HAL_SECTOR_16_ADDR - 1); // get boot count
+// 	global_boot_cnt =
+// 		*(volatile uint16_t *)(IAP_HAL_SECTOR_16_ADDR - 1); // get boot count
 
-	global_boot_cnt++;
+// 	global_boot_cnt++;
 
-	__disable_irq();
-	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(error_sectors[0]);
-	HAL_IAP_PrepareSector(sec, sec);
-	HAL_IAP_EraseSector(sec, sec);
-	__enable_irq();
+// 	__disable_irq();
+// 	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(error_sectors[0]);
+// 	HAL_IAP_PrepareSector(sec, sec);
+// 	HAL_IAP_EraseSector(sec, sec);
+// 	__enable_irq();
 
-	load_current_page();
-}
+// 	load_current_page();
+// }
 
-static void actuator_error_log(actuator_error_t *err, epos_track_t *track,
-							   uint8_t boot_cnt)
-{
-	actuator_error_log_from_epos(err, track, boot_cnt);
+// static void actuator_error_log(actuator_error_t *err, epos_track_t *track,
+// 							   uint8_t boot_cnt)
+// {
+// 	actuator_error_log_from_epos(err, track, boot_cnt);
 
-	uint8_t page_slot = current_slot % ERROR_SLOTS_PER_PAGE;
-	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
-	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
+// 	uint8_t page_slot = current_slot % ERROR_SLOTS_PER_PAGE;
+// 	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
+// 	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
 
-	memcpy(current_page_buffer + page_slot * sizeof(actuator_error_t), err,
-		   sizeof(actuator_error_t));
+// 	memcpy(current_page_buffer + page_slot * sizeof(actuator_error_t), err,
+// 		   sizeof(actuator_error_t));
 
-	__disable_irq();
-	iap_hal_sector_num_t sec =
-		HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
-	HAL_IAP_PrepareSector(sec, sec);
-	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, current_page_buffer,
-						  IAP_HAL_WRITE_256);
-	__enable_irq();
+// 	__disable_irq();
+// 	iap_hal_sector_num_t sec =
+// 		HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
+// 	HAL_IAP_PrepareSector(sec, sec);
+// 	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, current_page_buffer,
+// 						  IAP_HAL_WRITE_256);
+// 	__enable_irq();
 
-	current_slot++;
+// 	current_slot++;
 
-	if (current_slot >= ERROR_SLOTS_PER_SECTOR) {
-		current_slot = 0;
-		current_sector = (current_sector + 1) % ERROR_SECTOR_COUNT;
+// 	if (current_slot >= ERROR_SLOTS_PER_SECTOR) {
+// 		current_slot = 0;
+// 		current_sector = (current_sector + 1) % ERROR_SECTOR_COUNT;
 
-		__disable_irq();
-		sec = HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
-		HAL_IAP_PrepareSector(sec, sec);
-		HAL_IAP_EraseSector(sec, sec);
-		__enable_irq();
-	}
+// 		__disable_irq();
+// 		sec = HAL_IAP_GetSectorNumber(error_sectors[current_sector]);
+// 		HAL_IAP_PrepareSector(sec, sec);
+// 		HAL_IAP_EraseSector(sec, sec);
+// 		__enable_irq();
+// 	}
 
-	load_current_page();
+// 	load_current_page();
 
-	if (new_error_occures == 0) {
-		error_header_mark_written();
-		new_error_occures++;
-	} else {
-		new_error_occures++;
-	}
-}
+// 	if (new_error_occures == 0) {
+// 		error_header_mark_written();
+// 		new_error_occures++;
+// 	} else {
+// 		new_error_occures++;
+// 	}
+// }
 
-static void actuator_error_log_from_epos(actuator_error_t *err,
-										 epos_track_t *track, uint8_t boot_cnt)
-{
-	uint8_t epos_idx = (uint8_t)(track - epos.track);
+// static void actuator_error_log_from_epos(actuator_error_t *err,
+// 										 epos_track_t *track, uint8_t boot_cnt)
+// {
+// 	uint8_t epos_idx = (uint8_t)(track - epos.track);
 
-	// num_error = fiksna pozicija u flash-u, ne brojač
-	err->num_error =
-		(uint16_t)(current_sector * ERROR_SLOTS_PER_SECTOR + current_slot);
-	err->statusword = track->status;
-	err->task_state = (uint8_t)task_epos_state;
-	err->uc_boot_cnt = boot_cnt;
+// 	// num_error = fiksna pozicija u flash-u, ne brojač
+// 	err->num_error =
+// 		(uint16_t)(current_sector * ERROR_SLOTS_PER_SECTOR + current_slot);
+// 	err->statusword = track->status;
+// 	err->task_state = (uint8_t)task_epos_state;
+// 	err->uc_boot_cnt = boot_cnt;
 
-	if (epos_idx < epos.track_count) {
-		uint32_t full_error_code = 0;
-		if (epos_obj_read(&epos, epos_idx, &ObjErrorHistory1,
-						  &full_error_code) != 0) {
-			err->error_code = 0xFFFF;
-		} else {
-			err->error_code = (uint16_t)(full_error_code & 0xFFFF);
-		}
-	}
-}
+// 	if (epos_idx < epos.track_count) {
+// 		uint32_t full_error_code = 0;
+// 		if (epos_obj_read(&epos, epos_idx, &ObjErrorHistory1,
+// 						  &full_error_code) != 0) {
+// 			err->error_code = 0xFFFF;
+// 		} else {
+// 			err->error_code = (uint16_t)(full_error_code & 0xFFFF);
+// 		}
+// 	}
+// }
 
-static void load_current_page(void)
-{
-	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
-	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
-	memcpy(current_page_buffer, (const uint8_t *)page_addr, 256);
-}
+// static void load_current_page(void)
+// {
+// 	uint8_t page_idx = current_slot / ERROR_SLOTS_PER_PAGE;
+// 	uint32_t page_addr = error_sectors[current_sector] + page_idx * 256;
+// 	memcpy(current_page_buffer, (const uint8_t *)page_addr, 256);
+// }
 
-/* find current active header slot */
-static void error_header_find(uint32_t *out_write, uint32_t *out_reported,
-							  uint32_t *out_idx)
-{
-	for (uint32_t i = 0; i < ERROR_HEADER_SLOTS_MAX; i++) {
-		uint32_t addr = ERROR_HEADER_ADDR + i * ERROR_HEADER_SLOT_SIZE;
-		uint32_t w = *(volatile uint32_t *)(addr);
-		uint32_t r = *(volatile uint32_t *)(addr + 4);
+// /* find current active header slot */
+// static void error_header_find(uint32_t *out_write, uint32_t *out_reported,
+// 							  uint32_t *out_idx)
+// {
+// 	for (uint32_t i = 0; i < ERROR_HEADER_SLOTS_MAX; i++) {
+// 		uint32_t addr = ERROR_HEADER_ADDR + i * ERROR_HEADER_SLOT_SIZE;
+// 		uint32_t w = *(volatile uint32_t *)(addr);
+// 		uint32_t r = *(volatile uint32_t *)(addr + 4);
 
-		if (w == ERROR_HEADER_FLAG_FRESH && r == ERROR_HEADER_FLAG_FRESH) {
-			/* prvi slobodan slot - prethodni je aktivan */
-			if (i == 0) {
-				/* sektor potpuno prazan, nikad nije bilo errora */
-				*out_write = ERROR_HEADER_FLAG_FRESH;
-				*out_reported = ERROR_HEADER_FLAG_FRESH;
-				*out_idx = 0;
-			} else {
-				uint32_t prev =
-					ERROR_HEADER_ADDR + (i - 1) * ERROR_HEADER_SLOT_SIZE;
-				*out_write = *(volatile uint32_t *)(prev);
-				*out_reported = *(volatile uint32_t *)(prev + 4);
-				*out_idx = i - 1;
-			}
-			return;
-		}
+// 		if (w == ERROR_HEADER_FLAG_FRESH && r == ERROR_HEADER_FLAG_FRESH) {
+// 			/* prvi slobodan slot - prethodni je aktivan */
+// 			if (i == 0) {
+// 				/* sektor potpuno prazan, nikad nije bilo errora */
+// 				*out_write = ERROR_HEADER_FLAG_FRESH;
+// 				*out_reported = ERROR_HEADER_FLAG_FRESH;
+// 				*out_idx = 0;
+// 			} else {
+// 				uint32_t prev =
+// 					ERROR_HEADER_ADDR + (i - 1) * ERROR_HEADER_SLOT_SIZE;
+// 				*out_write = *(volatile uint32_t *)(prev);
+// 				*out_reported = *(volatile uint32_t *)(prev + 4);
+// 				*out_idx = i - 1;
+// 			}
+// 			return;
+// 		}
 
-		/* oba 0x00 - slot iskorišćen do kraja, nastavi */
-		if (w == 0x00000000 && r == 0x00000000)
-			continue;
+// 		/* oba 0x00 - slot iskorišćen do kraja, nastavi */
+// 		if (w == 0x00000000 && r == 0x00000000)
+// 			continue;
 
-		/* aktivan slot */
-		*out_write = w;
-		*out_reported = r;
-		*out_idx = i;
-		return;
-	}
+// 		/* aktivan slot */
+// 		*out_write = w;
+// 		*out_reported = r;
+// 		*out_idx = i;
+// 		return;
+// 	}
 
-	/* sektor pun */
-	*out_write = 0x00000000;
-	*out_reported = 0x00000000;
-	*out_idx = ERROR_HEADER_SLOTS_MAX;
-}
+// 	/* sektor pun */
+// 	*out_write = 0x00000000;
+// 	*out_reported = 0x00000000;
+// 	*out_idx = ERROR_HEADER_SLOTS_MAX;
+// }
 
-/* spusti jedan bit u write flag - samo jednom po bootu */
-static void error_header_mark_written(void)
-{
-	if (boot_error_flagged)
-		return;
+// /* spusti jedan bit u write flag - samo jednom po bootu */
+// static void error_header_mark_written(void)
+// {
+// 	if (boot_error_flagged)
+// 		return;
 
-	uint32_t w, r, idx;
-	error_header_find(&w, &r, &idx);
+// 	uint32_t w, r, idx;
+// 	error_header_find(&w, &r, &idx);
 
-	uint32_t write_addr;
+// 	uint32_t write_addr;
 
-	if (idx >= ERROR_HEADER_SLOTS_MAX) {
-		/* sektor pun -> erase */
-		__disable_irq();
-		iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+// 	if (idx >= ERROR_HEADER_SLOTS_MAX) {
+// 		/* sektor pun -> erase */
+// 		__disable_irq();
+// 		iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
 
-		HAL_IAP_PrepareSector(sec, sec);
-		HAL_IAP_EraseSector(sec, sec);
-		__enable_irq();
+// 		HAL_IAP_PrepareSector(sec, sec);
+// 		HAL_IAP_EraseSector(sec, sec);
+// 		__enable_irq();
 
-		idx = 0;
-		w = ERROR_HEADER_FLAG_FRESH; /* 0xFFFFFFFF */
-	}
+// 		idx = 0;
+// 		w = ERROR_HEADER_FLAG_FRESH; /* 0xFFFFFFFF */
+// 	}
 
-	/* trenutni slot */
-	write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
+// 	/* trenutni slot */
+// 	write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
 
-	/* ako je stigao do 0 -> idi na sledeci slot */
-	if (w == 0x00000000) {
+// 	/* ako je stigao do 0 -> idi na sledeci slot */
+// 	if (w == 0x00000000) {
 
-		idx++;
+// 		idx++;
 
-		if (idx >= ERROR_HEADER_SLOTS_MAX) {
+// 		if (idx >= ERROR_HEADER_SLOTS_MAX) {
 
-			/* erase i kreni ispocetka */
-			__disable_irq();
-			iap_hal_sector_num_t sec =
-				HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+// 			/* erase i kreni ispocetka */
+// 			__disable_irq();
+// 			iap_hal_sector_num_t sec =
+// 				HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
 
-			HAL_IAP_PrepareSector(sec, sec);
-			HAL_IAP_EraseSector(sec, sec);
-			__enable_irq();
+// 			HAL_IAP_PrepareSector(sec, sec);
+// 			HAL_IAP_EraseSector(sec, sec);
+// 			__enable_irq();
 
-			idx = 0;
-		}
+// 			idx = 0;
+// 		}
 
-		write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
+// 		write_addr = ERROR_HEADER_ADDR + (idx * ERROR_HEADER_SLOT_SIZE);
 
-		w = ERROR_HEADER_FLAG_FRESH;
-	}
+// 		w = ERROR_HEADER_FLAG_FRESH;
+// 	}
 
-	/* spusti jedan bit */
-	uint32_t new_w = error_header_next_flag(w);
+// 	/* spusti jedan bit */
+// 	uint32_t new_w = error_header_next_flag(w);
 
-	uint32_t page_addr = write_addr & ~(0xFF);
-	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
+// 	uint32_t page_addr = write_addr & ~(0xFF);
+// 	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
 
-	uint32_t offset_in_page = write_addr - page_addr;
+// 	uint32_t offset_in_page = write_addr - page_addr;
 
-	memcpy(error_header_page + offset_in_page, &new_w, sizeof(uint32_t));
+// 	memcpy(error_header_page + offset_in_page, &new_w, sizeof(uint32_t));
 
-	__disable_irq();
+// 	__disable_irq();
 
-	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+// 	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
 
-	HAL_IAP_PrepareSector(sec, sec);
+// 	HAL_IAP_PrepareSector(sec, sec);
 
-	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
-						  IAP_HAL_WRITE_256);
+// 	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
+// 						  IAP_HAL_WRITE_256);
 
-	__enable_irq();
+// 	__enable_irq();
 
-	boot_error_flagged = 1;
-}
+// 	boot_error_flagged = 1;
+// }
 
-static void error_header_mark_reported(void)
-{
-	uint32_t w, r, idx;
-	error_header_find(&w, &r, &idx);
+// static void error_header_mark_reported(void)
+// {
+// 	uint32_t w, r, idx;
+// 	error_header_find(&w, &r, &idx);
 
-	if (w == ERROR_HEADER_FLAG_FRESH || w == r)
-		return;
+// 	if (w == ERROR_HEADER_FLAG_FRESH || w == r)
+// 		return;
 
-	/* reported = w, spuštamo iste bite kao w, bez erase! */
-	uint32_t reported_addr =
-		ERROR_HEADER_ADDR + idx * ERROR_HEADER_SLOT_SIZE + 4;
+// 	/* reported = w, spuštamo iste bite kao w, bez erase! */
+// 	uint32_t reported_addr =
+// 		ERROR_HEADER_ADDR + idx * ERROR_HEADER_SLOT_SIZE + 4;
 
-	uint32_t page_addr = reported_addr & ~(0xFF);
-	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
+// 	uint32_t page_addr = reported_addr & ~(0xFF);
+// 	memcpy(error_header_page, (const uint8_t *)page_addr, 256);
 
-	uint32_t offset_in_page = reported_addr - page_addr;
-	memcpy(error_header_page + offset_in_page, &w, sizeof(uint32_t));
+// 	uint32_t offset_in_page = reported_addr - page_addr;
+// 	memcpy(error_header_page + offset_in_page, &w, sizeof(uint32_t));
 
-	__disable_irq();
-	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
-	HAL_IAP_PrepareSector(sec, sec);
-	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
-						  IAP_HAL_WRITE_256);
-	__enable_irq();
-}
+// 	__disable_irq();
+// 	iap_hal_sector_num_t sec = HAL_IAP_GetSectorNumber(ERROR_HEADER_ADDR);
+// 	HAL_IAP_PrepareSector(sec, sec);
+// 	HAL_IAP_CopyRAM2Flash((uint8_t *)page_addr, error_header_page,
+// 						  IAP_HAL_WRITE_256);
+// 	__enable_irq();
+// }
 
-static void check_if_error_occurred_in_previous_boot(void)
-{
-	uint32_t w, r, idx;
-	error_header_find(&w, &r, &idx);
+// static void check_if_error_occurred_in_previous_boot(void)
+// {
+// 	uint32_t w, r, idx;
+// 	error_header_find(&w, &r, &idx);
 
-	/* write spušten a reported nije → prošli boot imao errora */
-	if (w != ERROR_HEADER_FLAG_FRESH && w != r)
-		unreported_errors_at_boot = 1;
-}
+// 	/* write spušten a reported nije → prošli boot imao errora */
+// 	if (w != ERROR_HEADER_FLAG_FRESH && w != r)
+// 		unreported_errors_at_boot = 1;
+// }
 
-static uint32_t error_header_next_flag(uint32_t current)
-{
-	/* traži prvi bit koji je još 1, spusti ga */
-	for (int i = 0; i < 32; i++) {
-		if (current & (1u << i)) {
-			return current & ~(1u << i);
-		}
-	}
-	return 0x00000000; /* svi biti spušteni */
-}
+// static uint32_t error_header_next_flag(uint32_t current)
+// {
+// 	/* traži prvi bit koji je još 1, spusti ga */
+// 	for (int i = 0; i < 32; i++) {
+// 		if (current & (1u << i)) {
+// 			return current & ~(1u << i);
+// 		}
+// 	}
+// 	return 0x00000000; /* svi biti spušteni */
+// }

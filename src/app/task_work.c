@@ -50,6 +50,8 @@ uint8_t cnt0 = 0;
 uint8_t cnt1 = 0;
 uint8_t cnt2 = 0;
 uint8_t cnt3 = 0;
+
+extern task_epos_state_e task_epos_state;
 /*******************************************************************************
  * Typedefs
  ******************************************************************************/
@@ -74,6 +76,10 @@ extern QueueHandle_t queue_command_long;
 
 mavlink_file_transfer_protocol_t ftp;
 uavcan_primitive_array_Integer8_1_0 arr;
+
+time_measurement_t time_measurements = {0};
+
+extern TaskHandle_t task_tx_can_handle;
 
 const uint32_t crc32_table[256] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
@@ -147,12 +153,13 @@ void task_work(void *arg)
 		}
 
 #else
-		while (xQueueReceive(queue_cyphal_rx, &rx, 0) == pdPASS) {
+		if (xQueueReceive(queue_cyphal_rx, &rx, pdMS_TO_TICKS(1)) == pdPASS) {
 			TX_QUEUE_MUTEX_TAKE
 			{
 				cyphal_process(&canard, rx);
 				TX_QUEUE_MUTEX_GIVE;
 			}
+			xTaskNotifyGive(task_tx_can_handle);
 		}
 
 #endif /* MAVLINK_OR_CYPHAL */
@@ -175,24 +182,6 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 			messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_deserialize_(
 				&arr, (const uint8_t *)tr->payload.data, &in_size);
 
-		switch (arr.act_id) {
-		case 0:
-			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 1);
-
-			break;
-		case 1:
-			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 1);
-
-			break;
-		case 2:
-			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 6, 1);
-
-			break;
-		case 3:
-			HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 7, 1);
-
-			break;
-		}
 		if (rc == 0) {
 			task_epos_ctrl(&arr);
 		}

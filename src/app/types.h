@@ -97,6 +97,23 @@ extern SemaphoreHandle_t tx_queue_mutex;
  * Typedefs
  ******************************************************************************/
 
+#pragma pack(push, 1)
+
+typedef struct time_measurement_t {
+	uint32_t receive_can_packet_time_us;
+	uint32_t processed_data_time_us;
+	uint32_t synchro_time_us;
+	uint32_t latency_time_per_packet_us;
+	uint32_t latency_receive_message_time_per_packet_us;
+	uint32_t average_receive_message_time_us;
+	uint32_t average_time_us;
+	uint32_t max_time_us;
+	uint32_t min_time_us;
+	uint16_t packet_count;
+} time_measurement_t;
+
+#pragma pack(pop)
+
 typedef struct cyphal_subscription_messages_t {
 	const enum CanardTransferKind kind;
 	const CanardPortID port_id;
@@ -120,6 +137,8 @@ typedef enum {
 /*******************************************************************************
  * API
  ******************************************************************************/
+
+void gpio_sync_callback(uint8_t pin);
 
 #ifdef __cplusplus
 }

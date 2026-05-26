@@ -72,6 +72,8 @@ extern QueueHandle_t queue_mav_ftp;
 extern QueueHandle_t queue_command_long;
 extern QueueHandle_t queue_status_text_report;
 
+extern TaskHandle_t task_tx_can_handle;
+
 extern task_epos_state_e task_epos_state;
 
 /* Extern temporary variables */
@@ -347,7 +349,7 @@ void task_mav(void *arg)
 
 	for (;;) {
 
-		// vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(1));
+		// vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5));
 
 		if (compontent_info_time != 0 &&
 			xTaskGetTickCount() - compontent_info_time > pdMS_TO_TICKS(10)) {
@@ -358,6 +360,8 @@ void task_mav(void *arg)
 					&canard, &tx_queue, CanardPriorityExceptional,
 					component_info_buf, component_info_sz, &tid_command_long,
 					CYPHAL_MEDIUM_TIMEOUT);
+
+				xTaskNotifyGive(task_tx_can_handle);
 
 				TX_QUEUE_MUTEX_GIVE;
 			}
@@ -376,6 +380,8 @@ void task_mav(void *arg)
 						&canard, &tx_queue, CanardPriorityExceptional,
 						common_status_text, common_status_text_sz,
 						&tid_common_status_text, CYPHAL_MEDIUM_TIMEOUT);
+
+					xTaskNotifyGive(task_tx_can_handle);
 
 					TX_QUEUE_MUTEX_GIVE;
 				}
@@ -403,6 +409,8 @@ void task_mav(void *arg)
 						&canard, &tx_queue, CanardPriorityImmediate,
 						uavcan_node_Mode_1_0_FIXED_PORT_ID_, node_mode_buf,
 						node_mode_sz, &tid_node_mode, CYPHAL_MEDIUM_TIMEOUT);
+
+					xTaskNotifyGive(task_tx_can_handle);
 
 					TX_QUEUE_MUTEX_GIVE;
 				}
@@ -454,6 +462,8 @@ void task_mav(void *arg)
 									CanardPriorityExceptional,
 									uavcan_primitive_array_Integer8_1_0_FIXED_PORT_ID_,
 									buf, buf_sz, &tid_ftp, 1000000U);
+
+							xTaskNotifyGive(task_tx_can_handle);
 							TX_QUEUE_MUTEX_GIVE;
 						}
 					}
@@ -491,6 +501,8 @@ void task_mav(void *arg)
 							command_ack_buf, command_ack_sz,
 							&tid_common_command_ack, CYPHAL_MEDIUM_TIMEOUT);
 
+						xTaskNotifyGive(task_tx_can_handle);
+
 						TX_QUEUE_MUTEX_GIVE;
 					}
 				}
@@ -523,6 +535,8 @@ void task_mav(void *arg)
 								&tid_lisum_power_hornet_ack,
 								CYPHAL_LOW_TIMEOUT);
 
+						xTaskNotifyGive(task_tx_can_handle);
+
 						TX_QUEUE_MUTEX_GIVE;
 					}
 				}
@@ -554,6 +568,8 @@ void task_mav(void *arg)
 								lisum_manual_ctrl_hornet_sz,
 								&tid_lisum_manual_ctrl_hornet,
 								CYPHAL_MEDIUM_TIMEOUT);
+
+						xTaskNotifyGive(task_tx_can_handle);
 
 						TX_QUEUE_MUTEX_GIVE;
 					}

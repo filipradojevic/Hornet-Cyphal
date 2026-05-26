@@ -68,16 +68,15 @@ static uint8_t counter = 0;
 
 void task_tx_can(void *arg)
 {
-	TickType_t last_wake = xTaskGetTickCount();
-
 	for (;;) {
-
-		vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(1));
+		ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
 
 		TX_QUEUE_MUTEX_TAKE
 		{
-			drain_tx_queue_result =
-				cyphal_drain_tx_queue(&canard, &tx_queue, 4);
+			int32_t res;
+			do {
+				res = cyphal_drain_tx_queue(&canard, &tx_queue, 8);
+			} while (res > 0);
 
 			TX_QUEUE_MUTEX_GIVE;
 		}

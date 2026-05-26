@@ -41,6 +41,8 @@
 #include "task.h"
 #include "timers.h"
 
+#include "lpc17xx_uart.h"
+#include "uart.h"
 #include "udp.h"
 #include "udp_tl.h"
 
@@ -111,6 +113,9 @@ QueueHandle_t queue_status_text_report;
 // QueueSets
 QueueSetHandle_t queueset_mav;
 
+TaskHandle_t task_tx_can_handle;
+TaskHandle_t task_epos_handle;
+
 volatile node_mode_state_t current_node_mode = NODE_MODE_INITIALIZATION;
 
 /*******************************************************************************
@@ -120,6 +125,25 @@ volatile node_mode_state_t current_node_mode = NODE_MODE_INITIALIZATION;
 static void timer_blinky_cb(TimerHandle_t xTimer);
 
 void cyphal_cb(void *usr_arg, uint32_t int_status);
+
+// For testing the latency in system
+void timer0_init(void)
+{
+	LPC_SC->PCONP |= (1 << 1); // Power TIMER0
+
+	LPC_SC->PCLKSEL0 &= ~(3 << 2);
+	LPC_SC->PCLKSEL0 |= (1 << 2);
+	// PCLK_TIMER0 = CCLK
+
+	LPC_TIM0->TCR = 0x02; // reset
+
+	LPC_TIM0->PR = (SystemCoreClock / 1000000) - 1;
+	// 1 us tick
+
+	LPC_TIM0->TC = 0;
+
+	LPC_TIM0->TCR = 0x01; // enable
+}
 
 /*******************************************************************************
  * Code
@@ -192,15 +216,6 @@ int main()
 	HAL_GPIO_Init(GPIO_HAL_INSTANCE_3, 25, &gpio_cfg);
 	HAL_GPIO_Init(GPIO_HAL_INSTANCE_3, 26, &gpio_cfg);
 
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 4, &gpio_cfg);
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 5, &gpio_cfg);
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 6, &gpio_cfg);
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 7, &gpio_cfg);
-
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 0);
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 0);
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 6, 0);
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 7, 0);
 	/*--------------------------------- CAN ----------------------------------*/
 
 	HAL_CAN_Init(CAN_HAL_INSTANCE_0, 1000000);
@@ -228,10 +243,6 @@ int main()
 	gpio_test_cfg.pinMode = GPIO_HAL_PINMODE_PULLDOWN;
 	gpio_test_cfg.pinDir = GPIO_HAL_OUTPUT;
 
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 4, &gpio_test_cfg); // Time for writing
-	HAL_GPIO_Init(GPIO_HAL_INSTANCE_0, 5, &gpio_test_cfg); // Time for erasing
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 4, 0); // Time for writing LOW
-	HAL_GPIO_SetPinValue(GPIO_HAL_INSTANCE_0, 5, 0); // Time for erasing LOW
 #else
 
 	/*--------------------------------- ETH ----------------------------------*/
@@ -258,12 +269,12 @@ int main()
 	xTaskCreate(task_mav, "mav", 512, NULL, 2, NULL);
 
 	/* EPOS task - high priority */
-	xTaskCreate(task_epos, "epos", 256, NULL, 3, NULL);
+	xTaskCreate(task_epos, "epos", 256, NULL, 3, &task_epos_handle);
 
 #if !MAVLINK_OR_CYPHAL
 
 	/* tx_can task - high priority */
-	xTaskCreate(task_tx_can, "tx_can", 128, NULL, 4, NULL);
+	xTaskCreate(task_tx_can, "tx_can", 128, NULL, 4, &task_tx_can_handle);
 
 #endif /* MAVLINK_OR_CYPHAL */
 
