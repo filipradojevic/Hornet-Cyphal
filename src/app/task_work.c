@@ -16,6 +16,7 @@
 #include "cyphal_mavlink_publishers.h"
 #include "cyphal_reg_publishers.h"
 #include "cyphal_uavcan_publishers.h"
+#include "servo.h"
 
 /* Lib */
 #include "can.h"
@@ -80,6 +81,10 @@ uavcan_primitive_array_Integer8_1_0 arr;
 time_measurement_t time_measurements = {0};
 
 extern TaskHandle_t task_tx_can_handle;
+
+extern servo_t g_servo_0;
+extern servo_t g_servo_1;
+extern servo_t g_servo_2;
 
 const uint32_t crc32_table[256] = {
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,
@@ -185,6 +190,28 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 		if (rc == 0) {
 			task_epos_ctrl(&arr);
 		}
+		break;
+	}
+
+	case messages_cyphal_uavcan_common_ServoOutputRaw_1_0_FIXED_PORT_ID_: {
+		messages_cyphal_uavcan_common_ServoOutputRaw_1_0 arr;
+
+		memset(&arr, 0, sizeof(arr));
+
+		size_t in_size = tr->payload.size;
+
+		int8_t rc =
+			messages_cyphal_uavcan_common_ServoOutputRaw_1_0_deserialize_(
+				&arr, (const uint8_t *)tr->payload.data, &in_size);
+
+		if (rc == 0) {
+			if (arr.port == 0) {
+				Servo_SetPulse(&g_servo_0, arr.servo1_raw);
+				Servo_SetPulse(&g_servo_1, arr.servo2_raw);
+				Servo_SetPulse(&g_servo_2, arr.servo3_raw);
+			}
+		}
+
 		break;
 	}
 

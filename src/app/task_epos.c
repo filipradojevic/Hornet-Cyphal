@@ -73,6 +73,8 @@ extern QueueHandle_t queue_mav_manual_ctrl;
 extern QueueHandle_t queue_epos_cmd;
 extern QueueHandle_t queue_status_text_report;
 
+BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
 static const epos_cfg_t epos_cfg_data = {
 	.unit_cfg.pos_prefix = EPOS_UNIT_PREFIX_NONE,
 	.unit_cfg.vel_prefix = EPOS_UNIT_PREFIX_NONE,
@@ -487,8 +489,14 @@ void task_epos_cmd(messages_cyphal_uavcan_common_CommandLong_1_0 *cmd,
 void task_epos_ctrl(
 	messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 *ctrl)
 {
+#if ACTUATOR_CONTROL
 	/* send control to back of the queue */
 	xQueueSend(mailbox_epos_ctrl, ctrl, 0);
+#else
+	xQueueSendFromISR(mailbox_epos_ctrl, ctrl, &xHigherPriorityTaskWoken);
+
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+#endif /* ACTUATOR_CONTROL */
 }
 
 #endif /* MAVLINK_OR_CYPHAL */

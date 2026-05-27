@@ -235,6 +235,7 @@ add_subdirectory(src/drivers/sd ${LSM_BINARY_DIR}/src/drivers/sd)
 add_subdirectory(src/drivers/ubx ${LSM_BINARY_DIR}/src/drivers/ubx)
 add_subdirectory(src/drivers/bl ${LSM_BINARY_DIR}/src/drivers/bl)
 add_subdirectory(src/drivers/ftp ${LSM_BINARY_DIR}/src/drivers/ftp)
+add_subdirectory(src/drivers/servo ${LSM_BINARY_DIR}/src/drivers/servo)
 
 # =============================================================
 #	libs
@@ -377,6 +378,7 @@ target_link_libraries(${EXECUTABLE}
     ubx   
     bl
     ftp
+    servo
 
     # libs
     libcanard

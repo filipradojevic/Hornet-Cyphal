@@ -53,7 +53,7 @@
 /* MAVLink client track count (ground station helicopter application) */
 #define MAV_CLIENT_TRACK_COUNT 4
 
-#define CYPHAL_SUBSCRIPTION_MESSAGES_COUNT 3
+#define CYPHAL_SUBSCRIPTION_MESSAGES_COUNT 5
 
 /*******************************************************************************
  * Typedefs
@@ -134,6 +134,7 @@ static CanardTransferID tid_ftp = 0;
 
 static struct CanardRxSubscription sub_command_long_1_0;
 static struct CanardRxSubscription sub_lisum_manual_ctrl_hornet_1_0;
+static struct CanardRxSubscription sub_servo_output_raw_1_0;
 
 /* Serialization buffers and sizes */
 static uint8_t common_status_text
@@ -187,7 +188,15 @@ cyphal_subscription_messages_t
 			 messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_FIXED_PORT_ID_,
 		 .serialization_buffer_size =
 			 messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_,
-		 .subscription = &sub_lisum_manual_ctrl_hornet_1_0}};
+		 .subscription = &sub_lisum_manual_ctrl_hornet_1_0},
+
+		{.kind = CanardTransferKindMessage,
+		 .port_id =
+			 messages_cyphal_uavcan_common_ServoOutputRaw_1_0_FIXED_PORT_ID_,
+		 .serialization_buffer_size =
+			 messages_cyphal_uavcan_common_ServoOutputRaw_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_,
+		 .subscription = &sub_servo_output_raw_1_0},
+};
 
 /* Global/volatile flags */
 volatile int validate = 0;

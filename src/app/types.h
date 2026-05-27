@@ -43,6 +43,7 @@ extern "C" {
 
 /* Heartbeat */
 #include "mavlink/messages_cyphal_uavcan/common/ComponentInformationBasic_1_0.h"
+#include "mavlink/messages_cyphal_uavcan/common/ServoOutputRaw_1_0.h"
 #include "mavlink/messages_cyphal_uavcan/minimal/Heartbeat_1_0.h"
 #include "uavcan/node/Mode_1_0.h"
 #include "uavcan/primitive/array/Integer8_1_0.h"

@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 
+#include "servo.h"
 #include "task_epos.h"
 #include "task_mav.h"
 #include "task_tx_can.h"
@@ -28,6 +29,7 @@
 #include "common.h"
 #include "eth.h"
 #include "gpio.h"
+#include "lpc17xx_clkpwr.h"
 #include "util.h"
 
 /* External hardware drivers */
@@ -51,10 +53,21 @@
 /*******************************************************************************
  * Defines
  ******************************************************************************/
-
+#define ACTUATOR_CONTROL                                                       \
+	1 // 0 - Control via lisumManualCtrlHornet, 1 - via PWM capture
 /*******************************************************************************
  * Typedefs
  ******************************************************************************/
+
+typedef struct {
+	uint32_t t_rise;
+	uint32_t t_period_rise;
+	uint32_t pulse_us;
+	uint32_t period_us;
+	uint8_t percent;
+	bool valid;
+	bool rise_valid;
+} capture_ch_t;
 
 /*******************************************************************************
  * Variables
@@ -118,6 +131,51 @@ TaskHandle_t task_epos_handle;
 
 volatile node_mode_state_t current_node_mode = NODE_MODE_INITIALIZATION;
 
+/* Servo variables */
+servo_t g_servo_0 = {
+	.gpio_port = SERVO_0_PORT,
+	.gpio_pin = SERVO_0_PIN,
+	.match_channel = SERVO_0_MATCH_CHANNEL,
+	.position =
+		{
+			.pulse_width_min_us = SERVO_MIN_PULSE_WIDTH_US,
+			.pulse_width_max_us = SERVO_MAX_PULSE_WIDTH_US,
+			.pulse_width_us = SERVO_MIN_PULSE_WIDTH_US,
+		},
+};
+
+servo_t g_servo_1 = {
+	.gpio_port = SERVO_1_PORT,
+	.gpio_pin = SERVO_1_PIN,
+	.match_channel = SERVO_1_MATCH_CHANNEL,
+	.position =
+		{
+			.pulse_width_min_us = SERVO_MIN_PULSE_WIDTH_US,
+			.pulse_width_max_us = SERVO_MAX_PULSE_WIDTH_US,
+			.pulse_width_us = SERVO_MIN_PULSE_WIDTH_US,
+		},
+};
+
+servo_t g_servo_2 = {
+	.gpio_port = SERVO_2_PORT,
+	.gpio_pin = SERVO_2_PIN,
+	.match_channel = SERVO_2_MATCH_CHANNEL,
+	.position =
+		{
+			.pulse_width_min_us = SERVO_ONESHOT125_MIN_US,
+			.pulse_width_max_us = SERVO_ONESHOT125_MAX_US,
+			.pulse_width_us = SERVO_ONESHOT125_MIN_US,
+		},
+};
+
+servo_group_t g_servo_group_0 = {0};
+servo_group_t g_servo_group_1 = {0};
+
+static uint32_t t_rise = 0;
+static uint32_t pulse_ticks = 0;
+
+static capture_ch_t g_capture = {0};
+
 /*******************************************************************************
  * Prototypes
  ******************************************************************************/
@@ -145,6 +203,11 @@ void timer0_init(void)
 	LPC_TIM0->TCR = 0x01; // enable
 }
 
+servo_return_value_t Servo_Init(void);
+
+#if ACTUATOR_CONTROL
+void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type);
+#endif /* ACTUATOR_CONTROL */
 /*******************************************************************************
  * Code
  ******************************************************************************/
@@ -203,6 +266,7 @@ int main()
 	/*--------------------------------- NVIC ---------------------------------*/
 	HAL_NVIC_SetPriority(SysTick_IRQn, 31);
 	HAL_NVIC_SetPriority(PendSV_IRQn, 30);
+	HAL_NVIC_EnableIRQ(TIMER0_IRQn);
 
 	/*------------------------------- Dev Time -------------------------------*/
 	HAL_DevTimeInit(TIM_HAL_INSTANCE_0);
@@ -242,6 +306,39 @@ int main()
 	gpio_test_cfg.openDrain = GPIO_HAL_OPENDRAIN_NORMAL;
 	gpio_test_cfg.pinMode = GPIO_HAL_PINMODE_PULLDOWN;
 	gpio_test_cfg.pinDir = GPIO_HAL_OUTPUT;
+
+	// /*------------------------------  Servo -------------------------------*/
+
+#if ACTUATOR_CONTROL
+	// Init capture
+	tim_hal_capture_cfg_t cap_cfg = {
+		.captureChannel = TIM_HAL_CH_1, // CAP0.1 = P1.28
+		.risingEdge = lFunctionalState_Enable,
+		.fallingEdge = lFunctionalState_Enable,
+		.intOnCaption = lFunctionalState_Enable,
+	};
+
+	// Timer bez prescalera — max rezolucija
+	tim_hal_cfg_t timer_cfg = {
+		.Prescale = TIM_HAL_PRESCALE_TICKS,
+		.PrescaleValue = 1,
+	};
+
+	HAL_TIM_Init(TIM_HAL_INSTANCE_1, &timer_cfg);
+
+	CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_TIMER1, CLKPWR_PCLKSEL_CCLK_DIV_1);
+	LPC_TIM1->PR = 0; // PR=0 -> TC++ svaki takt = 10 ns @ 100 MHz
+	HAL_TIM_ConfigCapture(TIM_HAL_INSTANCE_1, &cap_cfg);
+	HAL_TIM_EnableInterrupt(TIM_HAL_INSTANCE_1, capture_callback);
+
+	// servo_return_value_t servo_ret;
+
+	// servo_ret = Servo_Init();
+	// if (servo_ret != SERVO_OK) {
+	// 	for (;;)
+	// 		;
+	// }
+#endif /* ACTUATOR_CONTROL */
 
 #else
 
@@ -295,7 +392,104 @@ int main()
 	}
 }
 
+#if ACTUATOR_CONTROL
+void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type)
+{
+	if (ch != TIM_HAL_CH_1 || type != TIM_HAL_INT_TYPE_CAPTURE)
+		return;
+
+	uint32_t cap = HAL_TIM_GetCaptureValue(TIM_HAL_INSTANCE_1, TIM_HAL_CH_1);
+	uint32_t pclk = HAL_TIM_GetPCLK(TIM_HAL_INSTANCE_1);
+
+	uint32_t ticks_min = pclk / 1000U; // 1000 us
+	uint32_t ticks_max = pclk / 500U;  // 2000 us
+	uint32_t ticks_3ms = pclk / 333U;  // 3000 us — sanity limit
+
+	if (LPC_GPIO1->FIOPIN & (1 << 19)) {
+		/* Rising edge */
+		if (g_capture.rise_valid)
+			g_capture.period_us =
+				(uint32_t)((uint64_t)(cap - g_capture.t_period_rise) *
+						   1000000ULL / pclk);
+		g_capture.t_period_rise = cap;
+		g_capture.t_rise = cap;
+		g_capture.rise_valid = true;
+	} else {
+		/* Falling edge */
+		if (!g_capture.rise_valid)
+			return;
+
+		uint32_t ticks = cap - g_capture.t_rise;
+
+		/* Sanity check — ako je van 3ms, nevalidno merenje */
+		if (ticks > ticks_3ms) {
+			g_capture.rise_valid = false;
+			return;
+		}
+
+		/* Clamp na validni opseg */
+		if (ticks < ticks_min)
+			ticks = ticks_min;
+		if (ticks > ticks_max)
+			ticks = ticks_max;
+
+		// float pos = min_pos + ratio * (max_pos - min_pos);
+		float ratio =
+			(float)(ticks - ticks_min) / (float)(ticks_max - ticks_min);
+		float pos = 0.0f + ratio * 80.0f;
+
+		/* Clamp pozicije */
+		if (pos < 0.0f)
+			pos = 0.0f;
+		if (pos > 80.0f)
+			pos = 80.0f;
+
+		messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 arr;
+		arr.pos_sp_act = pos;
+		arr.act_id = 0;
+		task_epos_ctrl(&arr);
+
+		g_capture.pulse_us = (uint32_t)((uint64_t)ticks * 1000000ULL / pclk);
+		g_capture.percent = (uint8_t)(ratio * 100.0f);
+		g_capture.valid = true;
+	}
+}
+#endif /* ACTUATOR_CONTROL */
 /* ================================== Tasks ================================= */
+
+servo_return_value_t Servo_Init(void)
+{
+	servo_return_value_t ret;
+
+	/* Registruj servoe u grupu */
+	ret = ServoGroup_AddServo(&g_servo_group_0, &g_servo_0);
+	if (ret != SERVO_OK)
+		return ret;
+
+	ret = ServoGroup_AddServo(&g_servo_group_0, &g_servo_1);
+	if (ret != SERVO_OK)
+		return ret;
+
+	ret = ServoGroup_AddServo(&g_servo_group_1, &g_servo_2);
+	if (ret != SERVO_OK)
+		return ret;
+
+	/* Konfiguriši timer i pokreni */
+	const servo_group_cfg_t cfg_0 = {
+		.timer_instance = SERVO_TIMER_INSTANCE,
+		.period_us = SERVO_PERIOD_US,
+		.period_channel = SERVO_ALL_MATCH_CHANNEL,
+	};
+
+	const servo_group_cfg_t cfg_1 = {
+		.timer_instance = SERVO_TIMER_INSTANCE_2,
+		.period_us = SERVO_ONESHOT125_MAX_US,
+		.period_channel = SERVO_ALL_MATCH_CHANNEL_2,
+	};
+
+	ServoGroup_Init(&g_servo_group_0, &cfg_0);
+	return ServoGroup_Init(&g_servo_group_1, &cfg_1);
+}
 
 /* ============================= User Callbacks ============================= */
 

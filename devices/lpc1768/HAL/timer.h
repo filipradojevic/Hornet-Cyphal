@@ -164,6 +164,36 @@ uint32_t HAL_TIM_GetCaptureValue(tim_hal_instance_t instance,
  */
 void HAL_TIM_ResetCounter(tim_hal_instance_t instance);
 
+/**
+ *  @brief Set Timer Match Value
+ *
+ *  @param[in] instance Timer instance
+ *  @param[in] channel  Timer channel
+ *  @param[in] value    Match value
+ */
+void HAL_TIM_MatchValue(tim_hal_instance_t instance, tim_hal_ch_t channel,
+						uint32_t value);
+
+/**
+ *  @brief Disable Timer Match Interrupt
+ *
+ *  @param[in] instance Timer instance
+ *  @param[in] channel  Timer channel
+ */
+void HAL_TIM_DisableInterrupt(tim_hal_instance_t instance,
+							  tim_hal_ch_t channel);
+
+/**
+ *  @brief Enable Timer Match Interrupt
+ *
+ *  @param[in] instance Timer instance
+ *  @param[in] channel  Timer channel
+ */
+void HAL_TIM_EnableMatchInterrupt(tim_hal_instance_t instance,
+								  tim_hal_ch_t channel);
+
+uint32_t HAL_TIM_GetPCLK(tim_hal_instance_t instance);
+
 #ifdef __cplusplus
 }
 #endif

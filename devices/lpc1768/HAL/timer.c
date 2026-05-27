@@ -13,6 +13,7 @@
 
 #include <assert.h>
 
+#include "lpc17xx_clkpwr.h"
 #include "lpc17xx_pinsel.h"
 #include "lpc17xx_timer.h"
 
@@ -128,6 +129,22 @@ uint32_t HAL_TIM_GetVal(tim_hal_instance_t instance)
 	return tim_val;
 }
 
+uint32_t HAL_TIM_GetPCLK(tim_hal_instance_t instance)
+{
+	switch (instance) {
+	case TIM_HAL_INSTANCE_0:
+		return CLKPWR_GetPCLK(CLKPWR_PCLKSEL_TIMER0);
+	case TIM_HAL_INSTANCE_1:
+		return CLKPWR_GetPCLK(CLKPWR_PCLKSEL_TIMER1);
+	case TIM_HAL_INSTANCE_2:
+		return CLKPWR_GetPCLK(CLKPWR_PCLKSEL_TIMER2);
+	case TIM_HAL_INSTANCE_3:
+		return CLKPWR_GetPCLK(CLKPWR_PCLKSEL_TIMER3);
+	default:
+		return 0;
+	}
+}
+
 void HAL_TIM_ConfigCapture(tim_hal_instance_t instance,
 						   tim_hal_capture_cfg_t *captureCfg)
 {
@@ -172,7 +189,88 @@ void HAL_TIM_ResetCounter(tim_hal_instance_t instance)
 	TIM_ResetCounter(lpcInstance);
 }
 
-/************************************ IRQs ************************************/
+void HAL_TIM_MatchValue(tim_hal_instance_t instance, tim_hal_ch_t channel,
+						uint32_t value)
+{
+	assert(instance < HAL_TIM_INSTANCE_CNT);
+
+	LPC_TIM_TypeDef *TIMx = prvTIM_GetInstance(instance);
+
+	if (TIMx != NULL) {
+		switch (channel) {
+		case TIM_HAL_CH_0:
+			TIMx->MR0 = value;
+			break;
+		case TIM_HAL_CH_1:
+			TIMx->MR1 = value;
+			break;
+		case TIM_HAL_CH_2:
+			TIMx->MR2 = value;
+			break;
+		case TIM_HAL_CH_3:
+			TIMx->MR3 = value;
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void HAL_TIM_DisableInterrupt(tim_hal_instance_t instance, tim_hal_ch_t channel)
+{
+	assert(instance < HAL_TIM_INSTANCE_CNT);
+
+	LPC_TIM_TypeDef *TIMx = prvTIM_GetInstance(instance);
+
+	if (TIMx != NULL) {
+		switch (channel) {
+		case TIM_HAL_CH_0:
+			TIMx->MCR &= ~(1 << 0); // Disable MR0 interrupt
+			break;
+		case TIM_HAL_CH_1:
+			TIMx->MCR &= ~(1 << 3); // Disable MR1 interrupt
+			break;
+		case TIM_HAL_CH_2:
+			TIMx->MCR &= ~(1 << 6); // Disable MR2 interrupt
+			break;
+		case TIM_HAL_CH_3:
+			TIMx->MCR &= ~(1 << 9); // Disable MR3 interrupt
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+void HAL_TIM_EnableMatchInterrupt(tim_hal_instance_t instance,
+								  tim_hal_ch_t channel)
+{
+	assert(instance < HAL_TIM_INSTANCE_CNT);
+
+	LPC_TIM_TypeDef *TIMx = prvTIM_GetInstance(instance);
+
+	if (TIMx != NULL) {
+		switch (channel) {
+		case TIM_HAL_CH_0:
+			TIMx->MCR |= (1 << 0); // Enable MR0 interrupt
+			break;
+		case TIM_HAL_CH_1:
+			TIMx->MCR |= (1 << 3); // Enable MR1 interrupt
+			break;
+		case TIM_HAL_CH_2:
+			TIMx->MCR |= (1 << 6); // Enable MR2 interrupt
+			break;
+		case TIM_HAL_CH_3:
+			TIMx->MCR |= (1 << 9); // Enable MR3 interrupt
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+/************************************ IRQs
+ * *************************************/
 
 /**
  *  @brief Timer 0 IRQ Handler.
