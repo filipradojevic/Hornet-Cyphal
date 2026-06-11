@@ -43,6 +43,7 @@ extern "C" {
 
 /* Heartbeat */
 #include "mavlink/messages_cyphal_uavcan/common/ComponentInformationBasic_1_0.h"
+#include "mavlink/messages_cyphal_uavcan/common/FileTransferProtocol_1_0.h"
 #include "mavlink/messages_cyphal_uavcan/common/ServoOutputRaw_1_0.h"
 #include "mavlink/messages_cyphal_uavcan/minimal/Heartbeat_1_0.h"
 #include "uavcan/node/Mode_1_0.h"
@@ -114,6 +115,14 @@ typedef struct time_measurement_t {
 } time_measurement_t;
 
 #pragma pack(pop)
+
+typedef enum actuator_modes_e {
+	ACT_MODE_CYPHAL = 0,
+	ACT_MODE_RC = 1,
+	ACT_MODE_ONESHOOT125 = 2,
+	ACT_MODE_ONESHOOT42 = 3,
+	ACT_MODE_DSHOOT = 4
+} actuator_modes_e;
 
 typedef struct cyphal_subscription_messages_t {
 	const enum CanardTransferKind kind;

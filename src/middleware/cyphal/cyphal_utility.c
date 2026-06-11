@@ -171,7 +171,7 @@ int8_t cyphal_default_tx_handler(void *user_ref,
 	msg.frameType = CAN_HAL_DATA_FRAME;
 	msg.length = (uint8_t)frame->payload.size;
 	memcpy(msg.data, frame->payload.data, msg.length);
-	const lStatus_t st = HAL_CAN_SendMessage(CAN_HAL_INSTANCE_1, &msg, 0);
+	const lStatus_t st = HAL_CAN_SendMessage(CAN_HAL_INSTANCE_1, &msg, 1000);
 	if (st == lStatus_Success) {
 		return 1; /* transmitted */
 	}
@@ -217,6 +217,7 @@ void cyphal_process(struct CanardInstance *canard, can_hal_msg_t rx)
 		struct CanardRxSubscription *sub = NULL;
 
 		int8_t acc = canardRxAccept(canard, ts, &fr, 0, &tr, &sub);
+
 		if (acc > 0) {
 
 			handle_cyphal_transfer(&tr);

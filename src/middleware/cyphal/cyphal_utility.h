@@ -100,15 +100,13 @@ extern const uint8_t CYPHAL_NODES_ID_ARRAY[CYPHAL_NODES_IDX_MAX];
  ******************************************************************************/
 
 /** @internal libcanard instance allocator (fixed-size blocks). */
-static void *instance_allocate(void *const user_reference, const size_t size);
+static void* instance_allocate(void* const user_reference, const size_t size);
 /** @internal libcanard instance deallocator. */
-static void instance_deallocate(void *const user_reference, const size_t size,
-								void *const pointer);
+static void instance_deallocate(void* const user_reference, const size_t size, void* const pointer);
 /** @internal libcanard TX-queue allocator (fixed-size blocks). */
-static void *txq_allocate(void *const user_reference, const size_t size);
+static void* txq_allocate(void* const user_reference, const size_t size);
 /** @internal libcanard TX-queue deallocator. */
-static void txq_deallocate(void *const user_reference, const size_t size,
-						   void *const pointer);
+static void txq_deallocate(void* const user_reference, const size_t size, void* const pointer);
 
 /**
  * Initialize deterministic memory pools for libcanard (instance + TX queue).
@@ -133,10 +131,9 @@ void cyphal_pool_init(void);
  * @param timeout_usec Relative deadline for libcanard in microseconds.
  * @return >=0 on success (number of frames enqueued), negative on error.
  */
-int cyphal_pub_message(struct CanardInstance *ins, struct CanardTxQueue *txq,
-					   CanardPortID subject_id, enum CanardPriority priority,
-					   const void *payload, size_t payload_size,
-					   CanardTransferID *tid, CanardMicrosecond timeout_usec);
+int cyphal_pub_message(struct CanardInstance* ins, struct CanardTxQueue* txq,
+					   CanardPortID subject_id, enum CanardPriority priority, const void* payload,
+					   size_t payload_size, CanardTransferID* tid, CanardMicrosecond timeout_usec);
 
 /**
  * Publish a subject (message) transfer with an explicit remote node ID.
@@ -144,11 +141,10 @@ int cyphal_pub_message(struct CanardInstance *ins, struct CanardTxQueue *txq,
  * and may be ignored by other stacks. Provided to support targeted filtering
  * in mixed systems.
  */
-int cyphal_pub_message_to(struct CanardInstance *ins, struct CanardTxQueue *txq,
+int cyphal_pub_message_to(struct CanardInstance* ins, struct CanardTxQueue* txq,
 						  CanardPortID subject_id, enum CanardPriority priority,
-						  CanardNodeID dst_node_id, const void *payload,
-						  size_t payload_size, CanardTransferID *tid,
-						  CanardMicrosecond timeout_usec);
+						  CanardNodeID dst_node_id, const void* payload, size_t payload_size,
+						  CanardTransferID* tid, CanardMicrosecond timeout_usec);
 
 /**
  * Publish a service request/response.
@@ -165,11 +161,10 @@ int cyphal_pub_message_to(struct CanardInstance *ins, struct CanardTxQueue *txq,
  * @param timeout_usec Relative deadline in microseconds.
  * @return >=0 on success (frames enqueued), negative on error.
  */
-int cyphal_pub_service(struct CanardInstance *ins, struct CanardTxQueue *txq,
+int cyphal_pub_service(struct CanardInstance* ins, struct CanardTxQueue* txq,
 					   enum CanardTransferKind kind, CanardPortID service_id,
-					   CanardNodeID dst_node_id, enum CanardPriority priority,
-					   const void *payload, size_t payload_size,
-					   CanardTransferID *tid, CanardMicrosecond timeout_usec);
+					   CanardNodeID dst_node_id, enum CanardPriority priority, const void* payload,
+					   size_t payload_size, CanardTransferID* tid, CanardMicrosecond timeout_usec);
 
 /**
  * Flush pending frames from the TX queue using a user-provided frame handler.
@@ -183,10 +178,8 @@ int cyphal_pub_service(struct CanardInstance *ins, struct CanardTxQueue *txq,
  * @param max_flush_time_usec Optional soft time budget (0 to ignore).
  * @return Number of frames handled, or negative on error.
  */
-int cyphal_flush_tx(struct CanardInstance *ins, struct CanardTxQueue *txq,
-					void *user_reference,
-					int8_t (*on_frame)(void *, CanardMicrosecond,
-									   struct CanardMutableFrame *),
+int cyphal_flush_tx(struct CanardInstance* ins, struct CanardTxQueue* txq, void* user_reference,
+					int8_t (*on_frame)(void*, CanardMicrosecond, struct CanardMutableFrame*),
 					uint32_t max_frames, CanardMicrosecond max_flush_time_usec);
 
 /**
@@ -195,18 +188,16 @@ int cyphal_flush_tx(struct CanardInstance *ins, struct CanardTxQueue *txq,
  *
  * @return Number of frames sent, or negative on error.
  */
-int cyphal_pub_and_flush(
-	struct CanardInstance *ins, struct CanardTxQueue *txq,
-	CanardPortID subject_id, enum CanardPriority priority, const void *payload,
-	size_t payload_size, CanardTransferID *tid, CanardMicrosecond timeout_usec,
-	void *user_reference,
-	int8_t (*on_frame)(void *, CanardMicrosecond, struct CanardMutableFrame *),
-	uint32_t max_frames, CanardMicrosecond max_flush_time_usec);
+int cyphal_pub_and_flush(struct CanardInstance* ins, struct CanardTxQueue* txq,
+						 CanardPortID subject_id, enum CanardPriority priority, const void* payload,
+						 size_t payload_size, CanardTransferID* tid, CanardMicrosecond timeout_usec,
+						 void* user_reference,
+						 int8_t (*on_frame)(void*, CanardMicrosecond, struct CanardMutableFrame*),
+						 uint32_t max_frames, CanardMicrosecond max_flush_time_usec);
 
 /** Default CAN frame TX handler using HAL (extended ID). */
-int8_t cyphal_default_tx_handler(void *user_ref,
-								 CanardMicrosecond deadline_usec,
-								 struct CanardMutableFrame *frame);
+int8_t cyphal_default_tx_handler(void* user_ref, CanardMicrosecond deadline_usec,
+								 struct CanardMutableFrame* frame);
 
 /**
  * Drain a bounded number of frames from the TX queue using the default HAL
@@ -215,7 +206,7 @@ int8_t cyphal_default_tx_handler(void *user_ref,
  * @param max_frames Upper limit on frames processed this call.
  * @return Number of frames sent, negative on error.
  */
-int cyphal_drain_tx_queue(struct CanardInstance *ins, struct CanardTxQueue *txq,
+int cyphal_drain_tx_queue(struct CanardInstance* ins, struct CanardTxQueue* txq,
 						  uint32_t max_frames);
 
 /**
@@ -235,9 +226,9 @@ int cyphal_drain_tx_queue(struct CanardInstance *ins, struct CanardTxQueue *txq,
  * @param nodes_ids   Optional whitelist of allowed source node IDs.
  * @return Number of transfers delivered to the callback, negative on error.
  */
-void cyphal_process(struct CanardInstance *canard, can_hal_msg_t rx);
+void cyphal_process(struct CanardInstance* canard, can_hal_msg_t rx);
 
-void handle_cyphal_transfer(const struct CanardRxTransfer *tr);
+void handle_cyphal_transfer(const struct CanardRxTransfer* tr);
 
 #ifdef __cplusplus
 }

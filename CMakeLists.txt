@@ -223,6 +223,7 @@ add_subdirectory(devices/${DEVICE} ${LSM_BINARY_DIR}/devices/${DEVICE})
 # =============================================================
 #	drivers
 # =============================================================
+add_subdirectory(src/drivers/act_config ${LSM_BINARY_DIR}/src/drivers/act_config)
 add_subdirectory(src/drivers/ak09915c ${LSM_BINARY_DIR}/src/drivers/ak09915c)
 add_subdirectory(src/drivers/anpp ${LSM_BINARY_DIR}/src/drivers/anpp)
 add_subdirectory(src/drivers/bms ${LSM_BINARY_DIR}/src/drivers/bms)
@@ -366,6 +367,7 @@ target_link_libraries(${EXECUTABLE}
     ${DEVICE}
 
     # drivers
+    act_config
     ak09915c
     anpp
     bms
@@ -561,10 +563,10 @@ add_custom_command(TARGET ${EXECUTABLE}
     COMMAND ${CMAKE_SIZE_UTIL} ${EXECUTABLE}
 	COMMAND arm-none-eabi-objcopy -O ihex ${EXECUTABLE} ${ROOT_DIR_NAME}.hex
 	COMMAND arm-none-eabi-objcopy -O binary ${EXECUTABLE} ${ROOT_DIR_NAME}.bin
-	COMMAND ${PYTHON_EXECUTABLE} ${LSM_SOURCE_DIR}/scripts/prepend_fw_header.py
-		${ROOT_DIR_NAME}.bin ${ROOT_DIR_NAME}-firmware_for_bootloader.bin
-		--version ${GIT_TAG}
-		--git-hash ${GIT_HASH}
-		--git-tag ${GIT_TAG}
-		--project-name ${ROOT_DIR_NAME}
+	# COMMAND ${PYTHON_EXECUTABLE} ${LSM_SOURCE_DIR}/scripts/prepend_fw_header.py
+	# 	${ROOT_DIR_NAME}.bin ${ROOT_DIR_NAME}-firmware_for_bootloader.bin
+	# 	--version ${GIT_TAG}
+	# 	--git-hash ${GIT_HASH}
+	# 	--git-tag ${GIT_TAG}
+	# 	--project-name ${ROOT_DIR_NAME}
 )

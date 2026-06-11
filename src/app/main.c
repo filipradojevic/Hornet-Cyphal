@@ -17,6 +17,7 @@
 
 #include <stdint.h>
 
+#include "act_config.h"
 #include "servo.h"
 #include "task_epos.h"
 #include "task_mav.h"
@@ -129,6 +130,9 @@ QueueSetHandle_t queueset_mav;
 TaskHandle_t task_tx_can_handle;
 TaskHandle_t task_epos_handle;
 
+flash_cfg_rec_t g_act_cfg;
+actuator_modes_e act_mode = ACT_MODE_CYPHAL;
+
 volatile node_mode_state_t current_node_mode = NODE_MODE_INITIALIZATION;
 
 /* Servo variables */
@@ -205,14 +209,42 @@ void timer0_init(void)
 
 servo_return_value_t Servo_Init(void);
 
-#if ACTUATOR_CONTROL
 void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type);
-#endif /* ACTUATOR_CONTROL */
 /*******************************************************************************
  * Code
  ******************************************************************************/
 int main()
 {
+
+	// See how the actuator should work
+	flash_cfg_load(&g_act_cfg);
+	switch (g_act_cfg.mode) {
+	case ACT_MODE_CYPHAL: {
+		act_mode = ACT_MODE_CYPHAL;
+		break;
+	}
+	case ACT_MODE_RC: {
+		act_mode = ACT_MODE_RC;
+		break;
+	}
+	case ACT_MODE_ONESHOOT125: {
+		act_mode = ACT_MODE_ONESHOOT125;
+		break;
+	}
+	case ACT_MODE_ONESHOOT42: {
+		act_mode = ACT_MODE_ONESHOOT42;
+		break;
+	}
+	case ACT_MODE_DSHOOT: {
+		act_mode = ACT_MODE_DSHOOT;
+		break;
+	}
+	default: {
+		act_mode = ACT_MODE_CYPHAL;
+		break;
+	}
+	}
+	// flash_cfg_erase_debug();
 	/*------------------------------- FreeRTOS -------------------------------*/
 
 	/* Mutexes */
@@ -284,8 +316,6 @@ int main()
 
 	HAL_CAN_Init(CAN_HAL_INSTANCE_0, 1000000);
 
-#if !MAVLINK_OR_CYPHAL
-
 	/* --------------------------------- CAN ------------------------------ */
 	HAL_CAN_Init(CAN_HAL_INSTANCE_1, 1000000);
 
@@ -309,38 +339,34 @@ int main()
 
 	// /*------------------------------  Servo -------------------------------*/
 
-#if ACTUATOR_CONTROL
-	// Init capture
-	tim_hal_capture_cfg_t cap_cfg = {
-		.captureChannel = TIM_HAL_CH_1, // CAP0.1 = P1.28
-		.risingEdge = lFunctionalState_Enable,
-		.fallingEdge = lFunctionalState_Enable,
-		.intOnCaption = lFunctionalState_Enable,
-	};
+	if (act_mode != ACT_MODE_CYPHAL) {
 
-	// Timer bez prescalera — max rezolucija
-	tim_hal_cfg_t timer_cfg = {
-		.Prescale = TIM_HAL_PRESCALE_TICKS,
-		.PrescaleValue = 1,
-	};
+		LPC_PINCON->PINSEL3 &= ~(3U << 24);
+		LPC_PINCON->PINSEL3 |= (3U << 24);
 
-	HAL_TIM_Init(TIM_HAL_INSTANCE_1, &timer_cfg);
+		// Init capture
+		tim_hal_capture_cfg_t cap_cfg = {
+			.captureChannel = TIM_HAL_CH_1, // CAP0.1 = P1.28
+			.risingEdge = lFunctionalState_Enable,
+			.fallingEdge = lFunctionalState_Enable,
+			.intOnCaption = lFunctionalState_Enable,
+		};
 
-	CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_TIMER1, CLKPWR_PCLKSEL_CCLK_DIV_1);
-	LPC_TIM1->PR = 0; // PR=0 -> TC++ svaki takt = 10 ns @ 100 MHz
-	HAL_TIM_ConfigCapture(TIM_HAL_INSTANCE_1, &cap_cfg);
-	HAL_TIM_EnableInterrupt(TIM_HAL_INSTANCE_1, capture_callback);
+		// Timer bez prescalera — max rezolucija
+		tim_hal_cfg_t timer_cfg = {
+			.Prescale = TIM_HAL_PRESCALE_TICKS,
+			.PrescaleValue = 1,
+		};
 
-	// servo_return_value_t servo_ret;
+		HAL_TIM_Init(TIM_HAL_INSTANCE_1, &timer_cfg);
 
-	// servo_ret = Servo_Init();
-	// if (servo_ret != SERVO_OK) {
-	// 	for (;;)
-	// 		;
-	// }
-#endif /* ACTUATOR_CONTROL */
+		CLKPWR_SetPCLKDiv(CLKPWR_PCLKSEL_TIMER1, CLKPWR_PCLKSEL_CCLK_DIV_1);
+		LPC_TIM1->PR = 0; // PR=0 -> TC++ svaki takt = 10 ns @ 100 MHz
+		HAL_TIM_ConfigCapture(TIM_HAL_INSTANCE_1, &cap_cfg);
+		HAL_TIM_EnableInterrupt(TIM_HAL_INSTANCE_1, capture_callback);
+	}
 
-#else
+#if !ACTUATOR_CONTROL
 
 	/*--------------------------------- ETH ----------------------------------*/
 	HAL_ETH_Init(&eth_phy, dev_mac);
@@ -360,7 +386,7 @@ int main()
 
 	/*------------------------------- FreeRTOS -------------------------------*/
 	/* work task - lowest priority */
-	xTaskCreate(task_work, "udp", 256, NULL, 2, NULL);
+	xTaskCreate(task_work, "udp", 512, NULL, 2, NULL);
 
 	/* MAVLink task - medium priority */
 	xTaskCreate(task_mav, "mav", 512, NULL, 2, NULL);
@@ -392,7 +418,6 @@ int main()
 	}
 }
 
-#if ACTUATOR_CONTROL
 void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type)
 {
 	if (ch != TIM_HAL_CH_1 || type != TIM_HAL_INT_TYPE_CAPTURE)
@@ -436,13 +461,14 @@ void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type)
 		// float pos = min_pos + ratio * (max_pos - min_pos);
 		float ratio =
 			(float)(ticks - ticks_min) / (float)(ticks_max - ticks_min);
-		float pos = 0.0f + ratio * 80.0f;
+		float pos =
+			g_act_cfg.min_pos + ratio * (g_act_cfg.max_pos - g_act_cfg.min_pos);
 
 		/* Clamp pozicije */
-		if (pos < 0.0f)
-			pos = 0.0f;
-		if (pos > 80.0f)
-			pos = 80.0f;
+		if (pos < g_act_cfg.min_pos)
+			pos = g_act_cfg.min_pos;
+		if (pos > g_act_cfg.max_pos)
+			pos = g_act_cfg.max_pos;
 
 		messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 arr;
 		arr.pos_sp_act = pos;
@@ -454,7 +480,7 @@ void capture_callback(tim_hal_ch_t ch, tim_hal_int_type_t type)
 		g_capture.valid = true;
 	}
 }
-#endif /* ACTUATOR_CONTROL */
+
 /* ================================== Tasks ================================= */
 
 servo_return_value_t Servo_Init(void)

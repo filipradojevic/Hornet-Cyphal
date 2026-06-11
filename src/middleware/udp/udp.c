@@ -127,17 +127,17 @@ const uint8_t udp_eth_bcast[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
  ******************************************************************************/
 
 /* static utility function to resolve MAC address */
-static const uint8_t *udp_resolve(udp_t *udp, const uint8_t *ip);
+static const uint8_t* udp_resolve(udp_t* udp, const uint8_t* ip);
 
 /* static utility functions for striping and inserting protocol headers */
-static uint8_t *udp_parse(udp_t *udp, udp_track_t *track, uint16_t *size);
-static uint8_t *udp_pack(udp_t *udp, udp_track_t *track, uint16_t *size);
+static uint8_t* udp_parse(udp_t* udp, udp_track_t* track, uint16_t* size);
+static uint8_t* udp_pack(udp_t* udp, udp_track_t* track, uint16_t* size);
 
 /* Static utility function for handling ARP request. */
-static int udp_arp(udp_t *udp);
+static int udp_arp(udp_t* udp);
 
 /* static utility function to handle ICMP ping reply */
-static int udp_icmp(udp_t *udp, uint16_t size);
+static int udp_icmp(udp_t* udp, uint16_t size);
 
 /* definitions of total packet prefix and suffix sizes for outgoing packets */
 #define UDP_PREFIX_SIZE                                                        \
@@ -152,7 +152,7 @@ static int udp_icmp(udp_t *udp, uint16_t size);
  * Code
  ******************************************************************************/
 
-void udp_init(udp_t *udp, const uint8_t *mac, const uint8_t *ip, udp_phy_t *phy)
+void udp_init(udp_t* udp, const uint8_t* mac, const uint8_t* ip, udp_phy_t* phy)
 {
 	memcpy(udp->mac, mac, sizeof(udp->mac));
 	memcpy(udp->ip, ip, sizeof(udp->ip));
@@ -162,9 +162,9 @@ void udp_init(udp_t *udp, const uint8_t *mac, const uint8_t *ip, udp_phy_t *phy)
 	udp->track_count = 0;
 }
 
-int udp_arptab_add(udp_t *udp, const uint8_t *mac, const uint8_t *ip)
+int udp_arptab_add(udp_t* udp, const uint8_t* mac, const uint8_t* ip)
 {
-	udp_arptab_t *arptab;
+	udp_arptab_t* arptab;
 
 	arptab = &udp->arptab;
 	if (arptab->len >= UDP_ARP_MAX)
@@ -177,11 +177,11 @@ int udp_arptab_add(udp_t *udp, const uint8_t *mac, const uint8_t *ip)
 	return arptab->len - 1;
 }
 
-int udp_track(udp_t *udp, const uint8_t *ip, uint16_t port,
-			  int (*recv_cb)(udp_t *, uint8_t *, uint16_t, void *),
-			  void *recv_cb_arg)
+int udp_track(udp_t* udp, const uint8_t* ip, uint16_t port,
+			  int (*recv_cb)(udp_t*, uint8_t*, uint16_t, void*),
+			  void* recv_cb_arg)
 {
-	udp_track_t *track;
+	udp_track_t* track;
 
 	if (udp->track_count >= UDP_TRACK_MAX)
 		return -1;
@@ -196,13 +196,13 @@ int udp_track(udp_t *udp, const uint8_t *ip, uint16_t port,
 	return udp->track_count - 1;
 }
 
-void udp_process(udp_t *udp)
+void udp_process(udp_t* udp)
 {
 	uint16_t packet_size;
-	udp_track_t *track;
+	udp_track_t* track;
 	udp_track_t tmp_track;
-	const uint8_t *mac;
-	uint8_t *payload;
+	const uint8_t* mac;
+	uint8_t* payload;
 
 	/* check if there is anything to receive */
 	packet_size = udp->phy->recv(udp->phy, udp->buffer, UDP_ETH_MAX);
@@ -239,19 +239,19 @@ void udp_process(udp_t *udp)
 		if (memcmp(track->ip, tmp_track.ip, 4) != 0 &&
 			memcmp(track->ip, udp_ip_bcast, 4) != 0)
 			continue;
-		if (track->port != tmp_track.port && track->port != 0)
-			continue;
+		// if (track->port != tmp_track.port && track->port != 0)
+		// continue;
 
 		/* call receive callback if it is defined */
 		track->recv_cb(udp, payload, packet_size, track->recv_cb_arg);
 	}
 }
 
-uint16_t udp_send(udp_t *udp, const uint8_t *ip, uint16_t port,
-				  const uint8_t *data, uint16_t size)
+uint16_t udp_send(udp_t* udp, const uint8_t* ip, uint16_t port,
+				  const uint8_t* data, uint16_t size)
 {
 	udp_track_t tmp_track;
-	const uint8_t *mac;
+	const uint8_t* mac;
 
 	/* drop if size of packet is too large */
 	if (udp_pack_size(size) > UDP_ETH_MAX)
@@ -320,25 +320,25 @@ uint16_t udp_parse_size(uint16_t size)
 }
 
 #if UDP_ARP_GRAT
-void udp_arp_grat(udp_t *udp)
+void udp_arp_grat(udp_t* udp)
 {
-	udp_eth_hdr_t *eth_hdr;
+	udp_eth_hdr_t* eth_hdr;
 #if UDP_ETH_CRC_SEND
-	udp_eth_ftr_t *eth_ftr;
+	udp_eth_ftr_t* eth_ftr;
 	uint32_t eth_crc;
 #endif
-	udp_arp_hdr_t *arp_hdr;
+	udp_arp_hdr_t* arp_hdr;
 
 	uint16_t size;
 
 	/* fill ethernet frame header */
-	eth_hdr = (udp_eth_hdr_t *)udp->buffer;
+	eth_hdr = (udp_eth_hdr_t*)udp->buffer;
 	memcpy(eth_hdr->mac_dst, udp_eth_bcast, sizeof(eth_hdr->mac_dst));
 	memcpy(eth_hdr->mac_src, udp->mac, sizeof(eth_hdr->mac_src));
 	eth_hdr->ethertype = udp_reorder_16(UDP_ETH_TYPE_ARP);
 
 	/* fill ARP frame header */
-	arp_hdr = (udp_arp_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t));
+	arp_hdr = (udp_arp_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t));
 	arp_hdr->htype = udp_reorder_16(1);
 	arp_hdr->ptype = udp_reorder_16(UDP_ETH_TYPE_IPV4);
 	arp_hdr->hw_addrlen = 6;
@@ -353,11 +353,11 @@ void udp_arp_grat(udp_t *udp)
 
 #if UDP_ETH_CRC_SEND
 	/* calculate ethernet frame checksum */
-	eth_ftr = (udp_eth_ftr_t *)(udp->buffer + size);
+	eth_ftr = (udp_eth_ftr_t*)(udp->buffer + size);
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc = udp_crc32_eth(eth_crc, udp->buffer, size);
 	eth_ftr->crc = eth_crc;
-	size += sizeof(udp_eth_ftr_t *);
+	size += sizeof(udp_eth_ftr_t*);
 
 #endif
 
@@ -367,7 +367,7 @@ void udp_arp_grat(udp_t *udp)
 
 /****************************** static functions ******************************/
 
-static const uint8_t *udp_resolve(udp_t *udp, const uint8_t *ip)
+static const uint8_t* udp_resolve(udp_t* udp, const uint8_t* ip)
 {
 	/* check if broadcast */
 	if (memcmp(udp_ip_bcast, ip, 4) == 0)
@@ -382,24 +382,24 @@ static const uint8_t *udp_resolve(udp_t *udp, const uint8_t *ip)
 	return NULL;
 }
 
-static uint8_t *udp_parse(udp_t *udp, udp_track_t *track, uint16_t *size)
+static uint8_t* udp_parse(udp_t* udp, udp_track_t* track, uint16_t* size)
 {
-	udp_eth_hdr_t *eth_hdr;
+	udp_eth_hdr_t* eth_hdr;
 #if UDP_ETH_CRC_RECV
-	udp_eth_ftr_t *eth_ftr;
+	udp_eth_ftr_t* eth_ftr;
 #endif
-	udp_ip_hdr_t *ip_hdr;
-	udp_udp_hdr_t *udp_hdr;
+	udp_ip_hdr_t* ip_hdr;
+	udp_udp_hdr_t* udp_hdr;
 	uint16_t ihl;
 	uint16_t ip_crc;
 #if UDP_ETH_CRC_RECV
 	uint32_t eth_crc;
 #endif
 
-	uint8_t *parsed;
+	uint8_t* parsed;
 
 	/* extract ethernet frame header */
-	eth_hdr = (udp_eth_hdr_t *)udp->buffer;
+	eth_hdr = (udp_eth_hdr_t*)udp->buffer;
 
 	/* check if packet is IPv4 packet */
 	if (eth_hdr->ethertype != udp_reorder_16(UDP_ETH_TYPE_IPV4))
@@ -411,7 +411,7 @@ static uint8_t *udp_parse(udp_t *udp, udp_track_t *track, uint16_t *size)
 		return NULL;
 
 	/* extract IP header */
-	ip_hdr = (udp_ip_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t));
+	ip_hdr = (udp_ip_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t));
 
 	/* check if IP version is 4 */
 	if (ip_hdr->version_ihl >> 4 != 4)
@@ -430,16 +430,16 @@ static uint8_t *udp_parse(udp_t *udp, udp_track_t *track, uint16_t *size)
 	ihl = (ip_hdr->version_ihl & 0x0F) * 4;
 
 	/* validate IP header checksum */
-	ip_crc = udp_crc16_ip((const uint8_t *)ip_hdr, ihl);
+	ip_crc = udp_crc16_ip((const uint8_t*)ip_hdr, ihl);
 	if (ip_crc != 0)
 		return NULL;
 
 	/* extract UDP header */
-	udp_hdr = (udp_udp_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t) + ihl);
+	udp_hdr = (udp_udp_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t) + ihl);
 
 #if UDP_ETH_CRC_RECV
 	/* validate ethernet checksum */
-	eth_ftr = (udp_eth_ftr_t *)(udp->buffer + *size - sizeof(udp_eth_ftr_t));
+	eth_ftr = (udp_eth_ftr_t*)(udp->buffer + *size - sizeof(udp_eth_ftr_t));
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc =
 		udp_crc32_eth(eth_crc, udp->buffer, *size - sizeof(udp_eth_ftr_t));
@@ -457,27 +457,27 @@ static uint8_t *udp_parse(udp_t *udp, udp_track_t *track, uint16_t *size)
 	return parsed;
 }
 
-static uint8_t *udp_pack(udp_t *udp, udp_track_t *track, uint16_t *size)
+static uint8_t* udp_pack(udp_t* udp, udp_track_t* track, uint16_t* size)
 {
-	udp_eth_hdr_t *eth_hdr;
+	udp_eth_hdr_t* eth_hdr;
 #if UDP_ETH_CRC_SEND
-	udp_eth_ftr_t *eth_ftr;
+	udp_eth_ftr_t* eth_ftr;
 #endif
-	udp_ip_hdr_t *ip_hdr;
-	udp_udp_hdr_t *udp_hdr;
+	udp_ip_hdr_t* ip_hdr;
+	udp_udp_hdr_t* udp_hdr;
 	uint16_t ip_crc;
 #if UDP_ETH_CRC_SEND
 	uint32_t eth_crc;
 #endif
 
 	/* fill ethernet frame header */
-	eth_hdr = (udp_eth_hdr_t *)udp->buffer;
+	eth_hdr = (udp_eth_hdr_t*)udp->buffer;
 	memcpy(eth_hdr->mac_dst, track->mac, 6);
 	memcpy(eth_hdr->mac_src, udp->mac, 6);
 	eth_hdr->ethertype = udp_reorder_16(UDP_ETH_TYPE_IPV4);
 
 	/* fill IP header */
-	ip_hdr = (udp_ip_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t));
+	ip_hdr = (udp_ip_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t));
 	ip_hdr->version_ihl = 0x45;
 	ip_hdr->dscp_ecn = 0;
 	ip_hdr->length =
@@ -489,12 +489,12 @@ static uint8_t *udp_pack(udp_t *udp, udp_track_t *track, uint16_t *size)
 	memcpy(ip_hdr->ip_dst, track->ip, 4);
 	memcpy(ip_hdr->ip_src, udp->ip, 4);
 	ip_hdr->crc = 0;
-	ip_crc = udp_crc16_ip((const uint8_t *)ip_hdr, sizeof(udp_ip_hdr_t));
+	ip_crc = udp_crc16_ip((const uint8_t*)ip_hdr, sizeof(udp_ip_hdr_t));
 	ip_hdr->crc = ip_crc;
 
 	/* fill UDP header */
-	udp_hdr = (udp_udp_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t) +
-								sizeof(udp_ip_hdr_t));
+	udp_hdr = (udp_udp_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t) +
+							   sizeof(udp_ip_hdr_t));
 	udp_hdr->length = udp_reorder_16(*size + sizeof(udp_udp_hdr_t));
 	udp_hdr->port_src = 0;
 	udp_hdr->port_dst = udp_reorder_16(track->port);
@@ -503,8 +503,8 @@ static uint8_t *udp_pack(udp_t *udp, udp_track_t *track, uint16_t *size)
 #if UDP_ETH_CRC_SEND
 	/* append ethernet checksum */
 	eth_ftr =
-		(udp_eth_ftr_t *)(udp->buffer + sizeof(udp_eth_hdr_t) +
-						  sizeof(udp_ip_hdr_t) + sizeof(udp_udp_hdr_t) + *size);
+		(udp_eth_ftr_t*)(udp->buffer + sizeof(udp_eth_hdr_t) +
+						 sizeof(udp_ip_hdr_t) + sizeof(udp_udp_hdr_t) + *size);
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc =
 		udp_crc32_eth(eth_crc, udp->buffer, *size - sizeof(udp_eth_ftr_t));
@@ -516,20 +516,20 @@ static uint8_t *udp_pack(udp_t *udp, udp_track_t *track, uint16_t *size)
 	return udp->buffer;
 }
 
-static int udp_arp(udp_t *udp)
+static int udp_arp(udp_t* udp)
 {
-	udp_eth_hdr_t *eth_hdr;
-	udp_arp_hdr_t *arp_hdr;
+	udp_eth_hdr_t* eth_hdr;
+	udp_arp_hdr_t* arp_hdr;
 	uint8_t src_mac[6];
 	uint8_t src_addr[4];
 	uint16_t size;
 #if UDP_ETH_CRC_SEND
-	udp_eth_ftr_t *eth_ftr;
+	udp_eth_ftr_t* eth_ftr;
 	uint32_t eth_crc;
 #endif
 
-	eth_hdr = (udp_eth_hdr_t *)(udp->buffer);
-	arp_hdr = (udp_arp_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t));
+	eth_hdr = (udp_eth_hdr_t*)(udp->buffer);
+	arp_hdr = (udp_arp_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t));
 
 	/* check if packet is ARP packet */
 	if (eth_hdr->ethertype != udp_reorder_16(UDP_ETH_TYPE_ARP))
@@ -572,11 +572,11 @@ static int udp_arp(udp_t *udp)
 
 #if UDP_ETH_CRC_SEND
 	/* calculate ethernet frame checksum */
-	eth_ftr = (udp_eth_ftr_t *)(udp->buffer + size);
+	eth_ftr = (udp_eth_ftr_t*)(udp->buffer + size);
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc = udp_crc32_eth(eth_crc, udp->buffer, size);
 	eth_ftr->crc = eth_crc;
-	size += sizeof(udp_eth_ftr_t *);
+	size += sizeof(udp_eth_ftr_t*);
 #endif
 
 	udp->phy->send(udp->phy, udp->buffer, size);
@@ -584,14 +584,14 @@ static int udp_arp(udp_t *udp)
 	return 0;
 }
 
-static int udp_icmp(udp_t *udp, uint16_t size)
+static int udp_icmp(udp_t* udp, uint16_t size)
 {
-	udp_eth_hdr_t *eth_hdr;
+	udp_eth_hdr_t* eth_hdr;
 #if UDP_ETH_CRC_SEND || UDP_ETH_CRC_RECV
-	udp_eth_ftr_t *eth_ftr;
+	udp_eth_ftr_t* eth_ftr;
 #endif
-	udp_ip_hdr_t *ip_hdr;
-	udp_icmp_hdr_t *icmp_hdr;
+	udp_ip_hdr_t* ip_hdr;
+	udp_icmp_hdr_t* icmp_hdr;
 	uint16_t ihl;
 	uint16_t iplen;
 	uint16_t ip_crc;
@@ -601,7 +601,7 @@ static int udp_icmp(udp_t *udp, uint16_t size)
 	uint16_t icmp_crc;
 
 	/* extract ethernet frame header */
-	eth_hdr = (udp_eth_hdr_t *)udp->buffer;
+	eth_hdr = (udp_eth_hdr_t*)udp->buffer;
 
 	/* check if packet is IPv4 packet */
 	if (eth_hdr->ethertype != udp_reorder_16(UDP_ETH_TYPE_IPV4))
@@ -613,7 +613,7 @@ static int udp_icmp(udp_t *udp, uint16_t size)
 		return -1;
 
 	/* extract IP header */
-	ip_hdr = (udp_ip_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t));
+	ip_hdr = (udp_ip_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t));
 
 	/* check if IP version is 4 */
 	if (ip_hdr->version_ihl >> 4 != 4)
@@ -635,12 +635,12 @@ static int udp_icmp(udp_t *udp, uint16_t size)
 	iplen = udp_reorder_16(ip_hdr->length);
 
 	/* validate IP header checksum */
-	ip_crc = udp_crc16_ip((const uint8_t *)ip_hdr, ihl);
+	ip_crc = udp_crc16_ip((const uint8_t*)ip_hdr, ihl);
 	if (ip_crc != 0)
 		return -1;
 
 	/* extract ICMP header */
-	icmp_hdr = (udp_icmp_hdr_t *)(udp->buffer + sizeof(udp_eth_hdr_t) + ihl);
+	icmp_hdr = (udp_icmp_hdr_t*)(udp->buffer + sizeof(udp_eth_hdr_t) + ihl);
 
 	/* check if ICMP message is echo request */
 	if (icmp_hdr->type != UDP_ICMP_TYPE_ECHO_REQUEST)
@@ -654,7 +654,7 @@ static int udp_icmp(udp_t *udp, uint16_t size)
 
 #if UDP_ETH_CRC_RECV
 	/* validate ethernet frame checksum */
-	eth_ftr = (udp_eth_ftr_t *)(udp->buffer + size - sizeof(udp_eth_ftr_t));
+	eth_ftr = (udp_eth_ftr_t*)(udp->buffer + size - sizeof(udp_eth_ftr_t));
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc = udp_crc32_eth(eth_crc, udp->buffer, size - sizeof(udp_eth_ftr_t));
 	if (eth_crc != eth_ftr->crc)
@@ -678,12 +678,12 @@ static int udp_icmp(udp_t *udp, uint16_t size)
 
 	/* recalculate IP checksum */
 	ip_hdr->crc = 0;
-	ip_crc = udp_crc16_ip((const uint8_t *)ip_hdr, sizeof(udp_ip_hdr_t));
+	ip_crc = udp_crc16_ip((const uint8_t*)ip_hdr, sizeof(udp_ip_hdr_t));
 	ip_hdr->crc = ip_crc;
 
 #if UDP_ETH_CRC_SEND
 	/* recalculate ethernet frame checksum */
-	eth_ftr = (udp_eth_ftr_t *)(udp->buffer + size - sizeof(udp_eth_ftr_t));
+	eth_ftr = (udp_eth_ftr_t*)(udp->buffer + size - sizeof(udp_eth_ftr_t));
 	eth_crc = udp_crc32_eth(0, NULL, 0);
 	eth_crc = udp_crc32_eth(eth_crc, udp->buffer, size - sizeof(udp_eth_ftr_t));
 	eth_ftr->crc = eth_crc;

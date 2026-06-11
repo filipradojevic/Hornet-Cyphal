@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 /* External hardware drivers */
+#include "act_config.h"
 #include "cyphal_mavlink_publishers.h"
 #include "cyphal_reg_publishers.h"
 #include "cyphal_uavcan_publishers.h"
@@ -43,7 +44,8 @@
 /*******************************************************************************
  * Defines
  ******************************************************************************/
-
+#define ACT_CONFIG_OPCODE_SET_CFG 100
+#define ACT_CONFIG_OPCODE_READ_CFG 101
 /* gratuitous ARP period [ms] */
 #define ARP_GRAT_PERIOD_MS 10000
 
@@ -53,9 +55,17 @@ uint8_t cnt2 = 0;
 uint8_t cnt3 = 0;
 
 extern task_epos_state_e task_epos_state;
+
+extern flash_cfg_rec_t g_act_cfg;
+extern actuator_modes_e act_mode;
 /*******************************************************************************
  * Typedefs
  ******************************************************************************/
+typedef enum act_cfg_error_msg_e {
+	ACT_CFG_ERROR = -2,
+	ACT_CFG_ERROR_MIN_MAX = -1,
+	ACT_CFG_VALID_MSG = 0
+} act_cfg_error_msg_e;
 
 /*******************************************************************************
  * Variables
@@ -77,8 +87,14 @@ extern QueueHandle_t queue_command_long;
 
 mavlink_file_transfer_protocol_t ftp;
 uavcan_primitive_array_Integer8_1_0 arr;
+messages_cyphal_uavcan_common_FileTransferProtocol_1_0 file_transfer_protocol;
+
+static uint8_t buf_ftp
+	[messages_cyphal_uavcan_common_FileTransferProtocol_1_0_SERIALIZATION_BUFFER_SIZE_BYTES_];
+static size_t buf_ftp_sz = sizeof(buf_ftp);
 
 time_measurement_t time_measurements = {0};
+static CanardTransferID tid_ftp = 0;
 
 extern TaskHandle_t task_tx_can_handle;
 
@@ -134,6 +150,7 @@ const uint32_t crc32_table[256] = {
 /*******************************************************************************
  * Prototypes
  ******************************************************************************/
+void act_config_send_message(act_cfg_error_msg_e act_cfg_error_msg);
 
 /*******************************************************************************
  * Code
@@ -164,7 +181,6 @@ void task_work(void *arg)
 				cyphal_process(&canard, rx);
 				TX_QUEUE_MUTEX_GIVE;
 			}
-			xTaskNotifyGive(task_tx_can_handle);
 		}
 
 #endif /* MAVLINK_OR_CYPHAL */
@@ -177,19 +193,22 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 
 	case messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_FIXED_PORT_ID_: {
 
-		messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 arr;
+		if (act_mode == ACT_MODE_CYPHAL) {
+			messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0 arr;
 
-		memset(&arr, 0, sizeof(arr));
+			memset(&arr, 0, sizeof(arr));
 
-		size_t in_size = tr->payload.size;
+			size_t in_size = tr->payload.size;
 
-		int8_t rc =
-			messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_deserialize_(
-				&arr, (const uint8_t *)tr->payload.data, &in_size);
+			int8_t rc =
+				messages_cyphal_uavcan_lisum_LisumManualCtrlHornet_1_0_deserialize_(
+					&arr, (const uint8_t *)tr->payload.data, &in_size);
 
-		if (rc == 0) {
-			task_epos_ctrl(&arr);
+			if (rc == 0) {
+				task_epos_ctrl(&arr);
+			}
 		}
+
 		break;
 	}
 
@@ -287,16 +306,114 @@ void handle_cyphal_transfer(const struct CanardRxTransfer *tr)
 		ftp.target_component = arr.value.elements[2];
 		memcpy(ftp.payload, &arr.value.elements[3], sizeof(ftp.payload));
 
+		// flash_cfg_erase_debug();
+
 		if (ftp.payload[OPCODE] == 16) {
 			break;
+		} else if (ftp.payload[OPCODE] == 100 || ftp.payload[OPCODE] == 101) {
+			/* Sacuvaj target za odgovor */
+			file_transfer_protocol.target_network =
+				arr.value.elements[0]; // already correct above
+			file_transfer_protocol.target_system = arr.value.elements[1];
+			file_transfer_protocol.target_component = arr.value.elements[2];
+
+			if (ftp.payload[OPCODE] == ACT_CONFIG_OPCODE_SET_CFG) {
+
+				uint8_t mode = ftp.payload[DATA_START];
+
+				uint32_t min_bits, center_bits, max_bits;
+
+				memcpy(&min_bits, &ftp.payload[DATA_START + 1],
+					   sizeof(uint32_t));
+				memcpy(&center_bits, &ftp.payload[DATA_START + 5],
+					   sizeof(uint32_t));
+				memcpy(&max_bits, &ftp.payload[DATA_START + 9],
+					   sizeof(uint32_t));
+
+				__attribute__((
+					aligned(4))) uint8_t new_cfg_buf[sizeof(flash_cfg_rec_t)];
+				memset(new_cfg_buf, 0x00, sizeof(new_cfg_buf));
+				flash_cfg_rec_t *new_cfg = (flash_cfg_rec_t *)new_cfg_buf;
+
+				new_cfg->mode = mode;
+				memcpy(&new_cfg->min_pos, &min_bits, sizeof(float));
+				memcpy(&new_cfg->center_pos, &center_bits, sizeof(float));
+				memcpy(&new_cfg->max_pos, &max_bits, sizeof(float));
+
+				if (new_cfg->max_pos < new_cfg->min_pos) {
+					act_config_send_message(ACT_CFG_ERROR_MIN_MAX);
+					break;
+				}
+
+				if (!flash_cfg_save(new_cfg)) {
+					act_config_send_message(ACT_CFG_ERROR);
+					break;
+				}
+
+				g_act_cfg.mode = new_cfg->mode;
+				g_act_cfg.min_pos = new_cfg->min_pos;
+				g_act_cfg.center_pos = new_cfg->center_pos;
+				g_act_cfg.max_pos = new_cfg->max_pos;
+
+				act_config_send_message(ACT_CFG_VALID_MSG);
+
+			} else if (ftp.payload[OPCODE] == ACT_CONFIG_OPCODE_READ_CFG) {
+
+				uint32_t min_bits, center_bits, max_bits;
+				memcpy(&min_bits, &g_act_cfg.min_pos, sizeof(float));
+				memcpy(&center_bits, &g_act_cfg.center_pos, sizeof(float));
+				memcpy(&max_bits, &g_act_cfg.max_pos, sizeof(float));
+
+				file_transfer_protocol.payload[DATA_START] = g_act_cfg.mode;
+				file_transfer_protocol.payload[DATA_START + 1] =
+					(uint8_t)(min_bits);
+				file_transfer_protocol.payload[DATA_START + 2] =
+					(uint8_t)(min_bits >> 8);
+				file_transfer_protocol.payload[DATA_START + 3] =
+					(uint8_t)(min_bits >> 16);
+				file_transfer_protocol.payload[DATA_START + 4] =
+					(uint8_t)(min_bits >> 24);
+				file_transfer_protocol.payload[DATA_START + 5] =
+					(uint8_t)(center_bits);
+				file_transfer_protocol.payload[DATA_START + 6] =
+					(uint8_t)(center_bits >> 8);
+				file_transfer_protocol.payload[DATA_START + 7] =
+					(uint8_t)(center_bits >> 16);
+				file_transfer_protocol.payload[DATA_START + 8] =
+					(uint8_t)(center_bits >> 24);
+				file_transfer_protocol.payload[DATA_START + 9] =
+					(uint8_t)(max_bits);
+				file_transfer_protocol.payload[DATA_START + 10] =
+					(uint8_t)(max_bits >> 8);
+				file_transfer_protocol.payload[DATA_START + 11] =
+					(uint8_t)(max_bits >> 16);
+				file_transfer_protocol.payload[DATA_START + 12] =
+					(uint8_t)(max_bits >> 24);
+
+				act_config_send_message(ACT_CFG_VALID_MSG);
+			}
 		} else {
 			xQueueSend(queue_mav_ftp, &ftp, 0);
 		}
+
 		break;
 	}
 
 	default:
 		break;
+	}
+}
+
+void act_config_send_message(act_cfg_error_msg_e act_cfg_request_opcode_msg)
+{
+	file_transfer_protocol.payload[REQUEST_OPCODE] = act_cfg_request_opcode_msg;
+
+	if (messages_cyphal_uavcan_common_FileTransferProtocol_1_0_serialize_(
+			&file_transfer_protocol, buf_ftp, &buf_ftp_sz) >= 0) {
+
+		cyphal_publish_common_file_transfer_protocol(
+			&canard, &tx_queue, CanardPriorityExceptional, buf_ftp, buf_ftp_sz,
+			&tid_ftp, 1000000U);
 	}
 }
 
